@@ -3,8 +3,7 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-# Copy dependency files
-COPY package.json package-lock.json ./
+COPY package.json ./
 
 # Use BuildKit secrets to securely pass NPM_TOKEN without leaving it in the image history
 RUN --mount=type=secret,id=npm_token \

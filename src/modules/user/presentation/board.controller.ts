@@ -527,7 +527,9 @@ export class BoardController {
         ),
         filename: (req, file, cb) => {
           // Decode filename from latin1 (multer default) to utf8
-          file.originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
+          file.originalname = Buffer.from(file.originalname, 'latin1').toString(
+            'utf8',
+          );
           const uniqueSuffix =
             Date.now() + '-' + Math.round(Math.random() * 1e9);
           const safeFilename = file.originalname.replace(

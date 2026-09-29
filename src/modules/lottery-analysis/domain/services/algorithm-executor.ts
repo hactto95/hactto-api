@@ -1,13 +1,11 @@
-import {
-  BalanceCommand,
-  BalanceType,
-  ExecutableCommand,
-  FrequencyCommand,
-  FrequencyType,
-  hacttoExecute,
-  WeightsCommand,
-  WeightsType,
-} from '@hactto95/algorithm';
+import { BalanceCommand } from './executor/commands/balance-command';
+import { BalanceType } from '../enums/balance-type';
+import { ExecutableCommand } from './executor/commands/executable-command';
+import { FrequencyCommand } from './executor/commands/frequency-command';
+import { FrequencyType } from '../enums/frequency-type';
+import { hacttoExecute } from './executor/hactto-execute';
+import { WeightsCommand } from './executor/commands/weights-command';
+import { WeightsType } from '../enums/weights-type';
 import { DomainPrediction } from '../aggregates/prediction.entity';
 import { DomainAlgorithm } from '../aggregates/algorithm.entity';
 import { DomainAnalysis } from '../aggregates/analysis.entity';
