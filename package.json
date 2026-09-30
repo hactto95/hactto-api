@@ -1,6 +1,6 @@
 {
   "name": "hactto-api",
-  "version": "1.7.3",
+  "version": "1.7.4",
   "type": "commonjs",
   "description": "",
   "author": "",
@@ -22,7 +22,6 @@
   },
   "dependencies": {
     "@aws-sdk/client-textract": "^3.1077.0",
-    "@hactto95/algorithm": "^1.0.0",
     "@nestjs-modules/mailer": "^2.3.7",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/common": "^11.0.1",
