@@ -1,6 +1,6 @@
 import { CommandHandler, EventPublisher, ICommandHandler } from '@nestjs/cqrs';
 import { FetchAlgorithmCommand } from '../commands/fetch-algorithm.command';
-import { getAlgorithm } from '@hactto95/algorithm';
+import { getAlgorithm } from '../../domain/services/executor/get-algorithm';
 import { Inject } from '@nestjs/common';
 import {
   ALGORITHM_REPOSITORY_TOKEN,

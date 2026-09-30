@@ -1,0 +1,85 @@
+import { WeightsFunction } from './weights-function';
+
+export const maxCountWeights: WeightsFunction = (
+  data: number[][],
+  weights: number[],
+): Promise<number[]> => {
+  if (data.length === 0) return Promise.resolve([]);
+
+  const NUMBER_OF_POSITIONS = 6;
+  const MAX_LOTTO_NUMBER = 45;
+
+  const hitCounts: number[][] = Array.from(
+    { length: NUMBER_OF_POSITIONS },
+    () => new Array(MAX_LOTTO_NUMBER + 1).fill(0),
+  );
+
+  const recentHitEpisode: number[][] = Array.from(
+    { length: NUMBER_OF_POSITIONS },
+    () => new Array(MAX_LOTTO_NUMBER + 1).fill(-1),
+  );
+
+  for (let i = 0; i < data.length; i++) {
+    const winningNumbers = data[i];
+    for (let j = 0; j < NUMBER_OF_POSITIONS; j++) {
+      const num = winningNumbers[j];
+      if (num >= 1 && num <= MAX_LOTTO_NUMBER) {
+        hitCounts[j][num]++;
+        recentHitEpisode[j][num] = i;
+      }
+    }
+  }
+
+  const positionOrder = weights
+    .map((weight, index) => ({ pos: index, weight }))
+    .sort((a, b) => b.weight - a.weight);
+
+  const result: number[] = new Array(NUMBER_OF_POSITIONS).fill(0);
+  const usedNumbers = new Set<number>();
+
+  const getPlaceCount = (rank: number) => Math.max(1, 5 - rank);
+
+  for (let rank = 0; rank < positionOrder.length; rank++) {
+    const i = positionOrder[rank].pos;
+
+    const placer: { num: number; count: number; episode: number }[] = [];
+
+    for (let num = 1; num <= MAX_LOTTO_NUMBER; num++) {
+      if (usedNumbers.has(num) || hitCounts[i][num] === 0) continue;
+
+      placer.push({
+        num,
+        count: hitCounts[i][num],
+        episode: recentHitEpisode[i][num],
+      });
+    }
+
+    if (placer.length === 0) {
+      for (let num = 1; num <= MAX_LOTTO_NUMBER; num++) {
+        if (!usedNumbers.has(num)) {
+          placer.push({ num, count: Infinity, episode: Infinity });
+        }
+      }
+    }
+
+    placer.sort((a, b) => {
+      if (a.count !== b.count) return b.count - a.count;
+      return b.episode - a.episode;
+    });
+
+    if (placer.length > 0) {
+      result[i] = placer[0].num;
+
+      const placeCount = getPlaceCount(rank);
+
+      const placeLimit = Math.min(placer.length, placeCount);
+      for (let place = 0; place < placeLimit; place++) {
+        usedNumbers.add(placer[place].num);
+      }
+    }
+  }
+
+  result.sort((a, b) => a - b);
+
+  return Promise.resolve(result);
+};
