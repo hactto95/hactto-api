@@ -13,7 +13,9 @@ import {
   Patch,
   UseInterceptors,
   UploadedFile,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import * as path from 'path';
@@ -68,6 +70,7 @@ export class UserController {
   }
 
   @ApiOperation({ summary: 'Get current user profile' })
+  @UseGuards(JwtAuthGuard)
   @Get('me')
   async getMe() {
     const userId = this.requestParser.getUserId();
@@ -94,6 +97,7 @@ export class UserController {
   }
 
   @ApiOperation({ summary: 'Set nickname (only once)' })
+  @UseGuards(JwtAuthGuard)
   @Post('nickname')
   async setNickname(@Body('nickname') nickname: string) {
     const userId = this.requestParser.getUserId();
@@ -218,6 +222,7 @@ export class UserController {
   }
 
   @ApiOperation({ summary: 'Confirm and execute refund' })
+  @UseGuards(JwtAuthGuard)
   @Post('inquiries/:id/confirm-refund')
   async confirmRefund(@Param('id') id: string) {
     const numId = parseInt(id, 10);
@@ -331,6 +336,7 @@ export class UserController {
   }
 
   @ApiOperation({ summary: 'Cancel refund inquiry' })
+  @UseGuards(JwtAuthGuard)
   @Post('inquiries/:id/cancel-refund')
   async cancelRefund(@Param('id') id: string) {
     const numId = parseInt(id, 10);
@@ -370,6 +376,7 @@ export class UserController {
   }
 
   @ApiOperation({ summary: 'Get user hon events' })
+  @UseGuards(JwtAuthGuard)
   @Get('hon-events')
   async getHonEvents() {
     const userId = this.requestParser.getUserId();
@@ -382,6 +389,7 @@ export class UserController {
   }
 
   @ApiOperation({ summary: 'Report a nickname' })
+  @UseGuards(JwtAuthGuard)
   @Post('nickname-report')
   async reportNickname(
     @Body('targetNickname') targetNickname: string,
@@ -409,6 +417,7 @@ export class UserController {
     return { success: true };
   }
   @ApiOperation({ summary: 'Get user notifications' })
+  @UseGuards(JwtAuthGuard)
   @Get('notifications')
   async getNotifications() {
     const userId = this.requestParser.getUserId();
@@ -423,6 +432,7 @@ export class UserController {
   }
 
   @ApiOperation({ summary: 'Get unread notification count' })
+  @UseGuards(JwtAuthGuard)
   @Get('notifications/unread-count')
   async getUnreadNotificationCount() {
     const userId = this.requestParser.getUserId();
@@ -436,6 +446,7 @@ export class UserController {
   }
 
   @ApiOperation({ summary: 'Mark notification as read' })
+  @UseGuards(JwtAuthGuard)
   @Patch('notifications/:id/read')
   async markNotificationAsRead(@Param('id') id: string) {
     const numId = parseInt(id, 10);
@@ -506,6 +517,7 @@ export class UserController {
   }
 
   @ApiOperation({ summary: 'Upload avatar image' })
+  @UseGuards(JwtAuthGuard)
   @Post('avatar/upload')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -552,6 +564,7 @@ export class UserController {
   }
 
   @ApiOperation({ summary: 'Update avatar URL' })
+  @UseGuards(JwtAuthGuard)
   @Patch('avatar')
   async updateAvatar(@Body('avatarUrl') avatarUrl: string) {
     const userId = this.requestParser.getUserId();

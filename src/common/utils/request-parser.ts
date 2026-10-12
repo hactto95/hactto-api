@@ -44,6 +44,24 @@ export class RequestParser {
     if (req.user && req.user.sub) return req.user.sub;
     if (req.user && req.user.id) return req.user.id;
 
+    const authHeader = this.request.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(
+            Buffer.from(parts[1], 'base64').toString('utf8'),
+          );
+          if (payload && (payload.sub || payload.id)) {
+            return (payload.sub || payload.id) as string;
+          }
+        }
+      } catch {
+        // Ignore malformed token
+      }
+    }
+
     const headerId =
       (this.request.headers['x-user-id'] as string) ||
       (this.request.query?.userId as string) ||
