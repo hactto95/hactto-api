@@ -125,6 +125,18 @@ export class AuthService {
         },
       });
 
+      await tx.honEvent.create({
+        data: {
+          userId: id,
+          type: 'CHARGE',
+          amount: 50,
+          freeAmount: 50,
+          paidAmount: 0,
+          balance: 50,
+          description: '첫 방문',
+        },
+      });
+
       return createdUser;
     });
 

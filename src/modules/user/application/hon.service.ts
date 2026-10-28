@@ -159,9 +159,17 @@ export class HonService {
     description?: string,
     deductPaidFirst: boolean = false,
   ): Promise<void> {
-    const subscription = await this.honRepository.getSubscription(userId);
-    if (subscription && subscription.status === 'ACTIVE') {
-      return; // ACTIVE 구독자는 무제한
+    if (!deductPaidFirst) {
+      const subscription = await this.honRepository.getSubscription(userId);
+      if (
+        subscription &&
+        (subscription.status === 'ACTIVE' ||
+          (subscription.status === 'CANCELLED' &&
+            subscription.endsAt &&
+            new Date(subscription.endsAt) > new Date()))
+      ) {
+        return; // 유효한 구독자는 무제한
+      }
     }
 
     const hon = await this.honRepository.getHon(userId);
@@ -244,11 +252,21 @@ export class HonService {
     const free = currentHon ? currentHon.freeBalance : 0;
     const paid = currentHon ? currentHon.paidBalance : 0;
 
-    // 관리자 지급은 freeBalance에 반영
-    const newFree = free + (amount >= 0 ? amount : 0);
-    // 관리자 차감은 우선 paidBalance에 반영하되 음수가 되지 않도록 설정
-    const newPaid = Math.max(0, paid + (amount < 0 ? amount : 0));
-    const newTotalBalance = free + newPaid;
+    let newFree = free;
+    let newPaid = paid;
+
+    if (amount >= 0) {
+      // 관리자 지급은 freeBalance에 반영
+      newFree = free + amount;
+    } else {
+      // 관리자 차감은 우선 paidBalance에 반영하고 부족분은 freeBalance에서 차감하되 음수가 되지 않도록 설정
+      newPaid = Math.max(0, paid + amount);
+      const remainingDeduct = paid + amount;
+      if (remainingDeduct < 0) {
+        newFree = Math.max(0, free + remainingDeduct);
+      }
+    }
+    const newTotalBalance = newFree + newPaid;
 
     await this.honRepository.saveHon({
       userId,

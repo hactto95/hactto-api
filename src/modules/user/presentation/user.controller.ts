@@ -262,61 +262,121 @@ export class UserController {
       );
     }
 
-    // Recalculate amount across all payments
-    let totalChargedHon = 0;
-    let totalPaymentAmount = 0;
-    const paymentRefundLimits = payments.map((p) => {
-      let ch = 0;
-      if (p.amount === 1000) ch = 30;
-      else if (p.amount === 3000) ch = 100;
-      else if (p.amount === 5000) ch = 200;
-      totalChargedHon += ch;
-      totalPaymentAmount += p.amount;
-      return { payment: p, chargedHon: ch, refundableLimit: p.amount };
-    });
+    const latestPayment = payments[0];
+    const isSubscription =
+      latestPayment.amount === 12000 || latestPayment.amount === 100000;
 
-    const currentPaidBalance = inquiry.user.hon?.paidBalance ?? 0;
     let totalRefundAmount = 0;
-    let remainingHon = 0;
 
-    if (currentPaidBalance > 0 && totalChargedHon > 0) {
-      remainingHon = Math.min(totalChargedHon, currentPaidBalance);
-      const usedHon = totalChargedHon - remainingHon;
-      totalRefundAmount = Math.max(
-        0,
-        Math.floor(totalPaymentAmount * 0.9 - usedHon * 50),
+    if (isSubscription) {
+      const paymentDate = latestPayment.createdAt;
+      const now = inquiry.createdAt;
+      const daysSincePayment = Math.floor(
+        (now.getTime() - paymentDate.getTime()) / (1000 * 60 * 60 * 24),
       );
-    }
+      const isWithin7Days = daysSincePayment <= 7;
 
-    // Execute multi-payment LIFO cancels
-    let pendingRefundAmount = totalRefundAmount;
-    const cancelReason = `사용자 환불 최종 수락 (총 환불 금액: ${totalRefundAmount}원)`;
+      const predictions = await prisma.prediction.findMany({
+        where: {
+          userId,
+          createdAt: { gte: paymentDate },
+        },
+        include: { algorithm: true },
+      });
+      const personalPredictions = await prisma.personalPrediction.findMany({
+        where: {
+          userId,
+          createdAt: { gte: paymentDate },
+        },
+      });
 
-    for (const limitInfo of paymentRefundLimits) {
-      if (pendingRefundAmount <= 0) break;
-
-      const cancelAmount = Math.min(
-        pendingRefundAmount,
-        limitInfo.refundableLimit,
-      );
-      if (cancelAmount > 0) {
-        await this.paymentService.cancelPayment(
-          limitInfo.payment.paymentId,
-          cancelReason,
-          cancelAmount,
-        );
-        pendingRefundAmount -= cancelAmount;
+      let usedValue = 0;
+      for (const pred of predictions) {
+        usedValue += (pred.algorithm?.complexity || 0) * 50;
       }
-    }
+      usedValue += personalPredictions.length * 250;
 
-    // Deduct remaining charged HON
-    if (remainingHon > 0) {
-      await this.honService.deductHon(
-        userId,
-        remainingHon,
-        '환불 처리로 인한 회수',
-        true,
+      const paymentAmount = latestPayment.amount;
+      const penalty = Math.floor(paymentAmount * 0.1);
+
+      if (isWithin7Days && usedValue === 0) {
+        totalRefundAmount = paymentAmount;
+      } else {
+        totalRefundAmount = Math.max(0, paymentAmount - penalty - usedValue);
+      }
+
+      if (totalRefundAmount > 0) {
+        const cancelReason = `사용자 구독 환불 최종 수락 (총 환불 금액: ${totalRefundAmount}원)`;
+        await this.paymentService.cancelPayment(
+          latestPayment.paymentId,
+          cancelReason,
+          totalRefundAmount,
+        );
+      }
+
+      await prisma.subscription.updateMany({
+        where: { userId },
+        data: { status: 'EXPIRED', endsAt: new Date() },
+      });
+    } else {
+      // Recalculate amount across all HON payments
+      let totalChargedHon = 0;
+      let totalPaymentAmount = 0;
+      const honPayments = payments.filter(
+        (p) => p.amount === 1000 || p.amount === 3000 || p.amount === 5000,
       );
+      const paymentRefundLimits = honPayments.map((p) => {
+        let ch = 0;
+        if (p.amount === 1000) ch = 30;
+        else if (p.amount === 3000) ch = 100;
+        else if (p.amount === 5000) ch = 200;
+        totalChargedHon += ch;
+        totalPaymentAmount += p.amount;
+        return { payment: p, chargedHon: ch, refundableLimit: p.amount };
+      });
+
+      const currentPaidBalance = inquiry.user.hon?.paidBalance ?? 0;
+      let remainingHon = 0;
+
+      if (currentPaidBalance > 0 && totalChargedHon > 0) {
+        remainingHon = Math.min(totalChargedHon, currentPaidBalance);
+        const usedHon = totalChargedHon - remainingHon;
+        totalRefundAmount = Math.max(
+          0,
+          Math.floor(totalPaymentAmount * 0.9 - usedHon * 50),
+        );
+      }
+
+      // Execute multi-payment LIFO cancels
+      let pendingRefundAmount = totalRefundAmount;
+      const cancelReason = `사용자 환불 최종 수락 (총 환불 금액: ${totalRefundAmount}원)`;
+
+      for (const limitInfo of paymentRefundLimits) {
+        if (pendingRefundAmount <= 0) break;
+
+        const cancelAmount = Math.min(
+          pendingRefundAmount,
+          limitInfo.refundableLimit,
+        );
+        if (cancelAmount > 0) {
+          await this.paymentService.cancelPayment(
+            limitInfo.payment.paymentId,
+            cancelReason,
+            cancelAmount,
+          );
+          pendingRefundAmount -= cancelAmount;
+        }
+      }
+
+      // Deduct remaining charged HON
+      if (remainingHon > 0) {
+        await this.honService.deductHon(
+          userId,
+          remainingHon,
+          '환불 처리로 인한 회수',
+          true,
+        );
+      }
     }
 
     // Update inquiry
