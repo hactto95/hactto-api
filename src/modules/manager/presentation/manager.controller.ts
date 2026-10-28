@@ -92,8 +92,10 @@ export class ManagerController {
               if (p.amount === 1000) ch = 30;
               else if (p.amount === 3000) ch = 100;
               else if (p.amount === 5000) ch = 200;
-              totalChargedHon += ch;
-              totalPaymentAmount += p.amount;
+              if (ch > 0) {
+                totalChargedHon += ch;
+                totalPaymentAmount += p.amount;
+              }
             }
 
             const currentFree = inq.user.hon?.freeBalance ?? 0;
@@ -157,7 +159,9 @@ export class ManagerController {
               ...inq,
               paymentInfo: {
                 paymentId: payments[0].paymentId, // for backward compatibility/reference
-                amount: totalPaymentAmount,
+                amount: isSubscription
+                  ? latestPayment.amount
+                  : totalPaymentAmount,
                 chargedHon: totalChargedHon,
                 currentBalance: totalBalance,
                 calculatedRefundAmount: refundAmount,
@@ -233,8 +237,10 @@ export class ManagerController {
       if (p.amount === 1000) ch = 30;
       else if (p.amount === 3000) ch = 100;
       else if (p.amount === 5000) ch = 200;
-      totalChargedHon += ch;
-      totalPaymentAmount += p.amount;
+      if (ch > 0) {
+        totalChargedHon += ch;
+        totalPaymentAmount += p.amount;
+      }
     }
 
     const currentPaid = inquiry.user.hon?.paidBalance ?? 0;

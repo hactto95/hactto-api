@@ -1,7 +1,15 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+} from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { PaymentService } from '../application/payment.service';
 import { HonService } from '../application/hon.service';
+import { RequestParser } from '../../../common/utils/request-parser';
 import {
   ReadyPaymentRequestDto,
   ConfirmPaymentRequestDto,
@@ -21,6 +29,7 @@ export class PaymentController {
   constructor(
     private readonly paymentService: PaymentService,
     private readonly honService: HonService,
+    private readonly requestParser: RequestParser,
   ) {}
 
   @Get(':id')
@@ -35,8 +44,12 @@ export class PaymentController {
   async ready(
     @Body() dto: ReadyPaymentRequestDto,
   ): Promise<ReadyPaymentResponseDto> {
+    const userId = this.requestParser.getUserId() || dto.userId;
+    if (!userId) {
+      throw new BadRequestException('User ID가 필요합니다.');
+    }
     const aggregate = await this.paymentService.readyPayment(
-      dto.userId,
+      userId,
       dto.amount,
       dto.orderId,
       dto.orderName,
@@ -81,9 +94,13 @@ export class PaymentController {
 
   @Post('subscription/cancel')
   async cancelSubscription(
-    @Body('userId') userId: string,
+    @Body('userId') userId?: string,
   ): Promise<{ success: boolean }> {
-    await this.honService.cancelSubscription(userId);
+    const resolvedUserId = this.requestParser.getUserId() || userId;
+    if (!resolvedUserId) {
+      throw new BadRequestException('User ID가 필요합니다.');
+    }
+    await this.honService.cancelSubscription(resolvedUserId);
     return { success: true };
   }
 

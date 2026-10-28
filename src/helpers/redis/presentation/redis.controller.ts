@@ -51,11 +51,9 @@ export class RedisController {
       return { allowed: false, pending: false, ip: 'unknown', userId: '' };
     }
 
-    const userId = crypto
-      .createHash('sha256')
-      .update(ip)
-      .digest('hex')
-      .substring(0, 16);
+    const userId =
+      this.requestParser.getUserId() ||
+      crypto.createHash('sha256').update(ip).digest('hex').substring(0, 16);
 
     const hon = await this.honService.getHon(userId);
     const subscription = await this.honService.getSubscription(userId);

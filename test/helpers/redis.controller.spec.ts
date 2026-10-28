@@ -50,10 +50,8 @@ describe('RedisController', () => {
         }
         return {};
       }),
-      getVisitorId: jest.fn().mockImplementation(() => {
-        return (
-          currentRequest?.query?.visitorId || currentRequest?.body?.visitorId
-        );
+      getUserId: jest.fn().mockImplementation(() => {
+        return currentRequest?.query?.userId || currentRequest?.body?.userId;
       }),
       getMasterKey: jest.fn().mockImplementation(() => {
         return currentRequest?.query?.mk || currentRequest?.body?.mk;
