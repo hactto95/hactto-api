@@ -63,4 +63,58 @@ describe('RedisController', () => {
     expect(honService.getSubscription).toHaveBeenCalledWith(expectedIpHash);
     expect(result.userId).toBe(expectedIpHash);
   });
+
+  describe('RequestParser.getUserId token validation', () => {
+    const signJwt = (payloadObj: Record<string, unknown>, secret: string) => {
+      const header = Buffer.from(
+        JSON.stringify({ alg: 'HS256', typ: 'JWT' }),
+      ).toString('base64url');
+      const payload = Buffer.from(JSON.stringify(payloadObj)).toString(
+        'base64url',
+      );
+      const signature = crypto
+        .createHmac('sha256', secret)
+        .update(`${header}.${payload}`)
+        .digest('base64url');
+      return `${header}.${payload}.${signature}`;
+    };
+
+    it('returns sub for a valid non-expired Bearer token', () => {
+      const secret = process.env.JWT_ACCESS_SECRET || 'fallback-access-secret';
+      const token = signJwt(
+        { sub: 'valid-user', exp: Math.floor(Date.now() / 1000) + 3600 },
+        secret,
+      );
+      const parser = new RequestParser({
+        headers: { authorization: `Bearer ${token}` },
+      } as any);
+
+      expect(parser.getUserId()).toBe('valid-user');
+    });
+
+    it('returns undefined when the Bearer token is expired', () => {
+      const secret = process.env.JWT_ACCESS_SECRET || 'fallback-access-secret';
+      const token = signJwt(
+        { sub: 'expired-user', exp: Math.floor(Date.now() / 1000) - 60 },
+        secret,
+      );
+      const parser = new RequestParser({
+        headers: { authorization: `Bearer ${token}` },
+      } as any);
+
+      expect(parser.getUserId()).toBeUndefined();
+    });
+
+    it('returns undefined when the Bearer token signature is invalid', () => {
+      const token = signJwt(
+        { sub: 'forged-user', exp: Math.floor(Date.now() / 1000) + 3600 },
+        'wrong-secret',
+      );
+      const parser = new RequestParser({
+        headers: { authorization: `Bearer ${token}` },
+      } as any);
+
+      expect(parser.getUserId()).toBeUndefined();
+    });
+  });
 });

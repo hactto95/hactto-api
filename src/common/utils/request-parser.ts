@@ -1,6 +1,7 @@
 import { Request } from 'express';
 import { ForbiddenException, Inject, Injectable, Scope } from '@nestjs/common';
 import { REQUEST } from '@nestjs/core';
+import * as crypto from 'crypto';
 
 @Injectable({ scope: Scope.REQUEST })
 export class RequestParser {
@@ -50,9 +51,25 @@ export class RequestParser {
       try {
         const parts = token.split('.');
         if (parts.length === 3) {
+          const secret =
+            process.env.JWT_ACCESS_SECRET || 'fallback-access-secret';
+          const expectedSignature = crypto
+            .createHmac('sha256', secret)
+            .update(`${parts[0]}.${parts[1]}`)
+            .digest('base64url');
+          if (parts[2] !== expectedSignature) {
+            return undefined;
+          }
+
           const payload = JSON.parse(
-            Buffer.from(parts[1], 'base64').toString('utf8'),
+            Buffer.from(parts[1], 'base64url').toString('utf8'),
           );
+          if (
+            typeof payload?.exp === 'number' &&
+            payload.exp * 1000 <= Date.now()
+          ) {
+            return undefined;
+          }
           if (payload && (payload.sub || payload.id)) {
             return (payload.sub || payload.id) as string;
           }
