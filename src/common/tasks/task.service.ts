@@ -23,6 +23,9 @@ import * as path from 'path';
 @Injectable()
 export class TaskService {
   private readonly logger = new Logger(TaskService.name);
+  private isFetchingWinningNumbers = false;
+  private isRenewingSubscriptions = false;
+  private isProcessingAdminHonEvents = false;
 
   constructor(
     private readonly commandBus: CommandBus,
@@ -62,89 +65,107 @@ export class TaskService {
     timeZone: 'Asia/Seoul',
   })
   async fetchRecentWinningNumbers() {
+    if (this.isFetchingWinningNumbers) {
+      this.logger.warn(
+        'fetchRecentWinningNumbers is already running. Skipping duplicate execution.',
+      );
+      return;
+    }
+    this.isFetchingWinningNumbers = true;
     this.logger.debug('🚀 Starting fetch recent winning numbers job...');
     const maxRetries = 15; // 15 attempts
     const retryIntervalMs = 2 * 60 * 1000; // 2 minutes
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const today = new Date();
-        const estTime = new Date(
-          today.getFullYear(),
-          today.getMonth(),
-          today.getDate(),
-          21,
-          12,
-          0,
-        );
-        await this.systemStatusService.updateProgress(
-          5,
-          `신규 당첨번호 확인 중 (시도 ${attempt}/${maxRetries})`,
-          estTime.toISOString(),
-        );
-
-        this.logger.debug(
-          `Executing FetchRecentWinningNumberCommand (Attempt ${attempt}/${maxRetries})...`,
-        );
-        const result = (await this.commandBus.execute(
-          new FetchRecentWinningNumberCommand(),
-        )) as {
-          status: 'success' | 'already_drawn' | 'waiting_new_episode';
-          episode: number;
-        };
-
-        this.logger.debug(
-          `Command execution result: ${JSON.stringify(result)}`,
-        );
-
-        if (result.status === 'success') {
-          this.logger.debug(
-            `🎉 Successfully drew episode ${result.episode}. Triggering reliability analysis...`,
+    try {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const today = new Date();
+          const estTime = new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate(),
+            21,
+            12,
+            0,
           );
-          await this.commandBus.execute(new AnalyzeCommand());
-          this.logger.debug(
-            `Reliability analysis completed for episode ${result.episode}.`,
+          await this.systemStatusService.updateProgress(
+            5,
+            `신규 당첨번호 확인 중 (시도 ${attempt}/${maxRetries})`,
+            estTime.toISOString(),
           );
 
-          this.logger.debug(`Triggering winning shops synchronization...`);
-          await this.commandBus.execute(new FetchWinningShopsCommand());
-          this.logger.debug(`Winning shops synchronization completed.`);
-          return;
+          this.logger.debug(
+            `Executing FetchRecentWinningNumberCommand (Attempt ${attempt}/${maxRetries})...`,
+          );
+          const result = (await this.commandBus.execute(
+            new FetchRecentWinningNumberCommand(),
+          )) as {
+            status: 'success' | 'already_drawn' | 'waiting_new_episode';
+            episode: number;
+          };
+
+          this.logger.debug(
+            `Command execution result: ${JSON.stringify(result)}`,
+          );
+
+          if (result.status === 'success') {
+            this.logger.debug(
+              `🎉 Successfully drew episode ${result.episode}. Triggering reliability analysis...`,
+            );
+            await this.commandBus.execute(new AnalyzeCommand());
+            this.logger.debug(
+              `Reliability analysis completed for episode ${result.episode}.`,
+            );
+
+            this.logger.debug(`Triggering winning shops synchronization...`);
+            await this.commandBus.execute(new FetchWinningShopsCommand());
+            this.logger.debug(`Winning shops synchronization completed.`);
+            return;
+          }
+
+          if (result.status === 'already_drawn') {
+            this.logger.debug(
+              `Episode ${result.episode} is already drawn. Unlocking site immediately.`,
+            );
+            await this.systemStatusService.setAnalysisStatus(false);
+            return;
+          }
+
+          this.logger.debug(
+            `Expected new episode is not published yet (returned episode ${result.episode}). Waiting for retry...`,
+          );
+        } catch (error) {
+          this.logger.error(`Error on attempt ${attempt}:`, error);
         }
 
-        if (result.status === 'already_drawn') {
+        if (attempt < maxRetries) {
           this.logger.debug(
-            `Episode ${result.episode} is already drawn. Unlocking site immediately.`,
+            `Waiting ${retryIntervalMs / 1000}s before next retry...`,
           );
-          await this.systemStatusService.setAnalysisStatus(false);
-          return;
+          await new Promise((resolve) => setTimeout(resolve, retryIntervalMs));
         }
-
-        this.logger.debug(
-          `Expected new episode is not published yet (returned episode ${result.episode}). Waiting for retry...`,
-        );
-      } catch (error) {
-        this.logger.error(`Error on attempt ${attempt}:`, error);
       }
 
-      if (attempt < maxRetries) {
-        this.logger.debug(
-          `Waiting ${retryIntervalMs / 1000}s before next retry...`,
-        );
-        await new Promise((resolve) => setTimeout(resolve, retryIntervalMs));
-      }
+      this.logger.warn(
+        '⚠️ Reached max retries without drawing new numbers. Unlocking site as fallback.',
+      );
+      await this.systemStatusService.setAnalysisStatus(false);
+    } finally {
+      this.isFetchingWinningNumbers = false;
     }
-
-    this.logger.warn(
-      '⚠️ Reached max retries without drawing new numbers. Unlocking site as fallback.',
-    );
-    await this.systemStatusService.setAnalysisStatus(false);
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, {
     timeZone: 'Asia/Seoul',
   })
   async renewSubscriptions() {
+    if (this.isRenewingSubscriptions) {
+      this.logger.warn(
+        'renewSubscriptions is already running. Skipping duplicate execution.',
+      );
+      return;
+    }
+    this.isRenewingSubscriptions = true;
     this.logger.debug('🔄 Starting daily subscription renewal batch job...');
     const now = new Date();
     try {
@@ -279,6 +300,8 @@ export class TaskService {
         'Error occurred during subscription renewal job:',
         error,
       );
+    } finally {
+      this.isRenewingSubscriptions = false;
     }
   }
 
@@ -286,6 +309,13 @@ export class TaskService {
     timeZone: 'Asia/Seoul',
   })
   async processAdminHonEvents() {
+    if (this.isProcessingAdminHonEvents) {
+      this.logger.warn(
+        'processAdminHonEvents is already running. Skipping duplicate execution.',
+      );
+      return;
+    }
+    this.isProcessingAdminHonEvents = true;
     this.logger.log('🔄 Starting daily admin HON events processing...');
     const now = new Date();
     try {
@@ -366,6 +396,8 @@ export class TaskService {
       }
     } catch (error) {
       this.logger.error('자동 HON 이벤트 처리 중 오류 발생:', error);
+    } finally {
+      this.isProcessingAdminHonEvents = false;
     }
   }
   @Cron(CronExpression.EVERY_DAY_AT_3AM, {
