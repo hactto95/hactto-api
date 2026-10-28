@@ -5,13 +5,11 @@ import { UserModule } from './user/user.module';
 import { ManagerModule } from './manager/manager.module';
 import { AuthModule } from './auth/auth.module';
 import { MailModule } from './mail/mail.module';
-import { ScheduleModule } from '@nestjs/schedule';
 
 import { PolicyModule } from './policy/policy.module';
 
 @Module({
   imports: [
-    ScheduleModule.forRoot(),
     WinningNumberModule,
     LotteryAnalysisModule,
     UserModule,
