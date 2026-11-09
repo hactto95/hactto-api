@@ -44,6 +44,7 @@ export class GetLotteryBallStatusHandler implements IQueryHandler<GetLotteryBall
         lt4WnNo: true,
         lt5WnNo: true,
         lt6WnNo: true,
+        ltBnsWnNo: true,
       },
       orderBy: {
         episode: 'desc',
@@ -56,7 +57,7 @@ export class GetLotteryBallStatusHandler implements IQueryHandler<GetLotteryBall
   }
 
   async execute(query: GetLotteryBallStatusQuery): Promise<LotteryBallStatus> {
-    const cacheKey = `lottery-ball:status:${query.ball}:${query.beforeEpisode ?? 'latest'}`;
+    const cacheKey = `lottery-ball:status:v3:${query.ball}:${query.beforeEpisode ?? 'latest'}`;
 
     const cachedData = await this.redisService.get(cacheKey);
     if (cachedData) {
@@ -68,6 +69,14 @@ export class GetLotteryBallStatusHandler implements IQueryHandler<GetLotteryBall
         parsed.skip,
         parsed.friendlyNumbers,
         parsed.latestEpisode,
+        parsed.ball ?? query.ball,
+        parsed.totalEpisodes ?? 0,
+        parsed.totalCount ?? 0,
+        parsed.bonusCount ?? 0,
+        parsed.appearanceRate ?? 0,
+        parsed.rank ?? 0,
+        parsed.positionCounts ?? [0, 0, 0, 0, 0, 0],
+        parsed.friendlyCounts ?? [],
       );
     }
 
@@ -77,12 +86,31 @@ export class GetLotteryBallStatusHandler implements IQueryHandler<GetLotteryBall
     }
 
     if (rawList.length === 0) {
-      return new LotteryBallStatus(0, 0, BallTemperature.COLD, 0, [], 0);
+      return new LotteryBallStatus(
+        0,
+        0,
+        BallTemperature.COLD,
+        0,
+        [],
+        0,
+        query.ball,
+        0,
+        0,
+        0,
+        0,
+        1,
+        [0, 0, 0, 0, 0, 0],
+      );
     }
 
+    const totalEpisodes = rawList.length;
     let recentTen = 0;
     let recentThirty = 0;
     let latestEpisode = 0;
+    let totalCount = 0;
+    let bonusCount = 0;
+    const positionCounts = [0, 0, 0, 0, 0, 0];
+    const allBallTotalCounts = new Array(46).fill(0);
 
     const coOccurrenceMap = new Map<number, number>();
 
@@ -96,6 +124,22 @@ export class GetLotteryBallStatusHandler implements IQueryHandler<GetLotteryBall
         currentWinning.lt5WnNo,
         currentWinning.lt6WnNo,
       ];
+
+      for (let pos = 0; pos < 6; pos++) {
+        const n = numbers[pos];
+        if (n >= 1 && n <= 45) {
+          allBallTotalCounts[n]++;
+        }
+        if (n === query.ball) {
+          positionCounts[pos]++;
+          totalCount++;
+        }
+      }
+
+      if (currentWinning.ltBnsWnNo === query.ball) {
+        bonusCount++;
+      }
+
       const hasBall = numbers.includes(query.ball);
 
       if (hasBall) {
@@ -113,12 +157,26 @@ export class GetLotteryBallStatusHandler implements IQueryHandler<GetLotteryBall
       }
     }
 
-    const friendlyNumbers = Array.from(coOccurrenceMap.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([num]) => num);
+    let rank = 1;
+    for (let b = 1; b <= 45; b++) {
+      if (allBallTotalCounts[b] > totalCount) {
+        rank++;
+      }
+    }
 
-    const skip = rawList[0].episode - latestEpisode;
+    const appearanceRate =
+      totalEpisodes > 0
+        ? Number(((totalCount / totalEpisodes) * 100).toFixed(2))
+        : 0;
+
+    const topFriendlyEntries = Array.from(coOccurrenceMap.entries())
+      .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+      .slice(0, 3);
+    const friendlyNumbers = topFriendlyEntries.map(([num]) => num);
+    const friendlyCounts = topFriendlyEntries.map(([, cnt]) => cnt);
+
+    const skip =
+      latestEpisode > 0 ? rawList[0].episode - latestEpisode : totalEpisodes;
 
     const result = new LotteryBallStatus(
       recentTen,
@@ -127,16 +185,32 @@ export class GetLotteryBallStatusHandler implements IQueryHandler<GetLotteryBall
       skip,
       friendlyNumbers,
       latestEpisode,
+      query.ball,
+      totalEpisodes,
+      totalCount,
+      bonusCount,
+      appearanceRate,
+      rank,
+      positionCounts,
+      friendlyCounts,
     );
 
     await this.redisService.set(
       cacheKey,
       JSON.stringify({
+        ball: result.ball,
+        totalEpisodes: result.totalEpisodes,
+        totalCount: result.totalCount,
+        bonusCount: result.bonusCount,
+        appearanceRate: result.appearanceRate,
+        rank: result.rank,
+        positionCounts: result.positionCounts,
         recentTen: result.recentTen,
         recentThirty: result.recentThirty,
         status: result.status,
         skip: skip,
         friendlyNumbers: result.getFriendlyNumberArray(),
+        friendlyCounts: result.friendlyCounts,
         latestEpisode: result.latestEpisode,
       }),
       604800, // 7 days

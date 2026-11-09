@@ -11,6 +11,7 @@ import { GetAllWinningNumbersQuery } from '../../src/modules/number/application/
 import { GetLatestWinningNumberQuery } from '../../src/modules/number/application/queries/get-latest-winning-number.query';
 import { GetWinningNumberByEpisodeQuery } from '../../src/modules/number/application/queries/get-winning-number-by-episode.query';
 import { GetWinningNumberByEpisodeHandler } from '../../src/modules/number/application/query-handlers/get-winning-number-by-episode.handler';
+import { GetAllLotteryBallStatusesHandler } from '../../src/modules/number/application/query-handlers/get-all-lottery-ball-statuses.handler';
 import { DomainWinningNumber } from '../../src/modules/number/domain/aggregates/winning-number.entity';
 import { WinningNumberDrawer } from '../../src/modules/number/domain/services/winning-number-drawer';
 import { RedisService } from '../../src/helpers/redis/application/redis.service';
@@ -295,6 +296,40 @@ describe('WinningNumber CQRS Handlers', () => {
       expect(result).toBeDefined();
       expect(result!.episode).toBe(5);
       expect(mockRepository.findByEpisode).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GetAllLotteryBallStatusesHandler', () => {
+    it('should return cached 1~45 ball statuses when cached in Redis', async () => {
+      const handler = new GetAllLotteryBallStatusesHandler(mockRedisService);
+      const cached = [
+        {
+          ball: 1,
+          totalEpisodes: 100,
+          totalCount: 15,
+          bonusCount: 3,
+          appearanceRate: 15.0,
+          rank: 1,
+          positionCounts: [10, 3, 2, 0, 0, 0],
+          recentTen: 2,
+          recentThirty: 5,
+          status: 'HOT',
+          skip: 1,
+          friendlyNumbers: [7, 12, 34],
+          latestEpisode: 99,
+        },
+      ];
+      mockRedisService.get.mockResolvedValueOnce(JSON.stringify(cached));
+
+      const result = await handler.execute();
+      expect(result.length).toBe(1);
+      expect(result[0].ball).toBe(1);
+      expect(result[0].totalCount).toBe(15);
+      expect(result[0].bonusCount).toBe(3);
+      expect(result[0].appearanceRate).toBe(15.0);
+      expect(result[0].rank).toBe(1);
+      expect(result[0].positionCounts).toEqual([10, 3, 2, 0, 0, 0]);
+      expect(result[0].getFriendlyNumberArray()).toEqual([7, 12, 34]);
     });
   });
 });

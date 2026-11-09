@@ -16,6 +16,10 @@ export class WinningNumberDrawnHandler implements IEventHandler<WinningNumberDra
     await this.redisService.del(`winning-number:episode:${event.episode + 1}`);
     await this.redisService.del('winning-number:all');
     await this.redisService.del('winning-number:latest');
+    await this.redisService.del('lottery-ball:statuses:all:v2');
+    for (let b = 1; b <= 45; b++) {
+      await this.redisService.del(`lottery-ball:status:v3:${b}:latest`);
+    }
 
     // 2. 신뢰도 측정 실행
     await this.commandBus.execute(new AnalyzeCommand());
