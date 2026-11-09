@@ -22,6 +22,7 @@ import { GetLatestWinningNumberQuery } from '../application/queries/get-latest-w
 import { GetWinningNumberByEpisodeQuery } from '../application/queries/get-winning-number-by-episode.query';
 import { GetWinningShopsByEpisodeQuery } from '../application/queries/get-winning-shops-by-episode.query';
 import { GetLotteryBallStatusQuery } from '../application/queries/get-lottery-ball-status.query';
+import { GetAllLotteryBallStatusesQuery } from '../application/queries/get-all-lottery-ball-statuses.query';
 import { LotteryBallStatus } from '../domain/aggregates/lottery-ball-status.entity';
 import { LotteryBallStatusShowResponseDto } from './dtos/responses/lottery-ball-status-show-response.dto';
 
@@ -63,20 +64,19 @@ export class WinningNumberController {
   }
 
   @ApiOperation({
-    summary: 'Get the winning number by episode',
+    summary: 'Get the status of all lottery balls (1~45)',
   })
-  @ApiParam({ name: 'episode', required: true, description: '회차 번호' })
   @ResponseMessage('success.read')
-  @Get(':episode')
-  async findByEpisode(
-    @Param('episode', ParseIntPipe) episode: number,
-  ): Promise<WinningNumberShowResponseDto> {
-    const query = new GetWinningNumberByEpisodeQuery(episode);
-    const winningNumber = await this.queryBus.execute<
-      GetWinningNumberByEpisodeQuery,
-      DomainWinningNumber
+  @Get('lottery-balls')
+  async getAllLotteryBallStatuses(): Promise<
+    LotteryBallStatusShowResponseDto[]
+  > {
+    const query = new GetAllLotteryBallStatusesQuery();
+    const results = await this.queryBus.execute<
+      GetAllLotteryBallStatusesQuery,
+      LotteryBallStatus[]
     >(query);
-    return plainToInstance(WinningNumberShowResponseDto, winningNumber);
+    return plainToInstance(LotteryBallStatusShowResponseDto, results);
   }
 
   @ApiOperation({
@@ -96,6 +96,23 @@ export class WinningNumberController {
     >(query);
 
     return plainToInstance(LotteryBallStatusShowResponseDto, result);
+  }
+
+  @ApiOperation({
+    summary: 'Get the winning number by episode',
+  })
+  @ApiParam({ name: 'episode', required: true, description: '회차 번호' })
+  @ResponseMessage('success.read')
+  @Get(':episode')
+  async findByEpisode(
+    @Param('episode', ParseIntPipe) episode: number,
+  ): Promise<WinningNumberShowResponseDto> {
+    const query = new GetWinningNumberByEpisodeQuery(episode);
+    const winningNumber = await this.queryBus.execute<
+      GetWinningNumberByEpisodeQuery,
+      DomainWinningNumber
+    >(query);
+    return plainToInstance(WinningNumberShowResponseDto, winningNumber);
   }
 
   @ApiOperation({
