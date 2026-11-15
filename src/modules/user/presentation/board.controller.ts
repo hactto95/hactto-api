@@ -516,6 +516,9 @@ export class BoardController {
   @Post('upload')
   @UseInterceptors(
     FileInterceptor('file', {
+      limits: {
+        fileSize: 15 * 1024 * 1024, // 15MB
+      },
       storage: diskStorage({
         destination: path.join(
           __dirname,
