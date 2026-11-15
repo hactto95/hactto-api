@@ -581,6 +581,9 @@ export class UserController {
   @Post('avatar/upload')
   @UseInterceptors(
     FileInterceptor('file', {
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB
+      },
       storage: diskStorage({
         destination: path.join(
           __dirname,
