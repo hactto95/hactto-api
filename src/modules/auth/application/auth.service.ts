@@ -207,6 +207,10 @@ export class AuthService {
     const tokens = await this.generateTokens(user.id);
     return {
       ...tokens,
+      id: user.id,
+      email: user.email,
+      nickname: user.nickname,
+      avatarUrl: user.avatarUrl,
       user: {
         id: user.id,
         email: user.email,

@@ -3,6 +3,7 @@ import { CqrsModule } from '@nestjs/cqrs';
 import { AlgorithmController } from './presentation/algorithm.controller';
 import { PersonalWeightController } from './presentation/personal-weight.controller';
 import { AnalysisController } from './presentation/analysis.controller';
+import { LotteryDrawController } from './presentation/lottery-draw.controller';
 import { InfraPredictionRepository } from './infrastructure/adapters/infra-prediction.repository';
 import { WinningNumberModule } from '../number/winning-number.module';
 import { CommandHandlers, QueryHandlers, EventHandlers } from './application';
@@ -30,6 +31,7 @@ import { AuthModule } from '../auth/auth.module';
     AlgorithmController,
     PersonalWeightController,
     AnalysisController,
+    LotteryDrawController,
   ],
   providers: [
     {
