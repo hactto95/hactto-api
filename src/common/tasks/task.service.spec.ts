@@ -119,4 +119,39 @@ describe('TaskService', () => {
       expect(honRepository.findExpiredSubscriptions).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('publishWeeklyAiBriefing', () => {
+    it('dispatches PublishAiWeeklyBriefingCommand when enabled', async () => {
+      delete process.env.AI_AUTO_POST_ENABLED;
+      const commandBusMock = { execute: jest.fn() } as unknown as CommandBus;
+      const service = new TaskService(
+        commandBusMock,
+        {} as SystemStatusService,
+        honRepository,
+        {} as IPaymentRepository,
+        {} as PortoneClient,
+      );
+
+      await service.publishWeeklyAiBriefing();
+
+      expect(commandBusMock.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips execution when AI_AUTO_POST_ENABLED is false', async () => {
+      process.env.AI_AUTO_POST_ENABLED = 'false';
+      const commandBusMock = { execute: jest.fn() } as unknown as CommandBus;
+      const service = new TaskService(
+        commandBusMock,
+        {} as SystemStatusService,
+        honRepository,
+        {} as IPaymentRepository,
+        {} as PortoneClient,
+      );
+
+      await service.publishWeeklyAiBriefing();
+
+      expect(commandBusMock.execute).not.toHaveBeenCalled();
+      delete process.env.AI_AUTO_POST_ENABLED;
+    });
+  });
 });
