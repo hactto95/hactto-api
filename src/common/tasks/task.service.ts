@@ -5,6 +5,7 @@ import { HacttoCronExpression } from './hactto-cron-expression.enum';
 import { FetchRecentWinningNumberCommand } from '../../modules/number/application/commands/fetch-recent-winning-number.command';
 import { FetchWinningShopsCommand } from '../../modules/number/application/commands/fetch-winning-shops.command';
 import { AnalyzeCommand } from '../../modules/lottery-analysis/application/commands/analyze.command';
+import { PublishAiWeeklyBriefingCommand } from '../../modules/lottery-analysis/application/commands/publish-ai-weekly-briefing.command';
 import { SystemStatusService } from '../utils/system-status/system-status.service';
 import {
   IHonRepository,
@@ -482,6 +483,25 @@ export class TaskService {
       );
     } catch (err) {
       this.logger.error('Local cleanup job failed:', err);
+    }
+  }
+
+  @Cron(HacttoCronExpression.SUNDAY_AT_10AM, {
+    timeZone: 'Asia/Seoul',
+  })
+  async publishWeeklyAiBriefing() {
+    if (process.env.AI_AUTO_POST_ENABLED === 'false') {
+      this.logger.log(
+        'AI_AUTO_POST_ENABLED is false. Skipping weekly AI briefing.',
+      );
+      return;
+    }
+
+    this.logger.debug('🤖 Triggering Sunday 10:00 AM AI Weekly Briefing...');
+    try {
+      await this.commandBus.execute(new PublishAiWeeklyBriefingCommand());
+    } catch (error) {
+      this.logger.error('Failed to publish weekly AI briefing:', error);
     }
   }
 }
