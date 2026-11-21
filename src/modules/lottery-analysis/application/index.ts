@@ -13,6 +13,7 @@ import { PredictionGeneratedHandler } from './event-handlers/prediction-generate
 import { GetAlgorithmTypeHandler } from './query-handlers/get-algorithm-type.handler';
 import { FetchAlgorithmHandler } from './command-handlers/fetch-algorithm.hanlder';
 import { UpdateAlgorithmHandler } from './command-handlers/update-algorithm.handler';
+import { PublishAiWeeklyBriefingHandler } from './command-handlers/publish-ai-weekly-briefing.handler';
 import { AlgorithmFetchedHandler } from './event-handlers/algorithm-fetched.handler';
 import { PredictionAnalyzedHandler } from './event-handlers/prediction-analyzed.handler';
 import { AnalysisCreatedHandler } from './event-handlers/analysis-created.handler';
@@ -23,6 +24,7 @@ export const CommandHandlers = [
   AnalyzeHandler,
   FetchAlgorithmHandler,
   UpdateAlgorithmHandler,
+  PublishAiWeeklyBriefingHandler,
 ];
 
 export const QueryHandlers = [
