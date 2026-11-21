@@ -12,9 +12,7 @@ import {
 import { GetLatestWinningNumberQuery } from '../../../number/application/queries/get-latest-winning-number.query';
 
 @CommandHandler(PublishAiWeeklyBriefingCommand)
-export class PublishAiWeeklyBriefingHandler
-  implements ICommandHandler<PublishAiWeeklyBriefingCommand>
-{
+export class PublishAiWeeklyBriefingHandler implements ICommandHandler<PublishAiWeeklyBriefingCommand> {
   private readonly logger = new Logger(PublishAiWeeklyBriefingHandler.name);
 
   constructor(
@@ -60,18 +58,25 @@ export class PublishAiWeeklyBriefingHandler
 
       // 4. 직전 회차 통계 계산
       const numberArray = latestWinning.getNumberArray();
-      const sixBalls = numberArray.slice(0, 6).sort((a: number, b: number) => a - b);
+      const sixBalls = numberArray
+        .slice(0, 6)
+        .sort((a: number, b: number) => a - b);
       const bonusBall = numberArray[6] || 0;
 
       const oddCount = sixBalls.filter((n: number) => n % 2 !== 0).length;
       const oddEvenRatio = `${oddCount}:${6 - oddCount}`;
-      const sumRange = sixBalls.reduce((acc: number, curr: number) => acc + curr, 0);
+      const sumRange = sixBalls.reduce(
+        (acc: number, curr: number) => acc + curr,
+        0,
+      );
 
       // 5. 다음 회차 분석 후보 5개 게임 수집
       const candidateGames = await this.resolveCandidateGames(round + 1);
 
       const analyzedGames = candidateGames.map((game, index) => {
-        const matchWithPrevious = game.filter((n) => sixBalls.includes(n)).length;
+        const matchWithPrevious = game.filter((n) =>
+          sixBalls.includes(n),
+        ).length;
         return {
           label: `게임 ${String.fromCharCode(65 + index)}`,
           numbers: game,
@@ -139,7 +144,9 @@ export class PublishAiWeeklyBriefingHandler
     }
   }
 
-  private async resolveCandidateGames(nextEpisode: number): Promise<number[][]> {
+  private async resolveCandidateGames(
+    nextEpisode: number,
+  ): Promise<number[][]> {
     try {
       const predictions = await prisma.prediction.findMany({
         where: { episode: nextEpisode },
@@ -148,29 +155,33 @@ export class PublishAiWeeklyBriefingHandler
       });
 
       if (predictions && predictions.length >= 5) {
-        const parsed = predictions.map((p) => {
-          try {
-            const json = JSON.parse(p.numbers);
-            if (Array.isArray(json)) return json.map(Number);
-            return [
-              json['1st'] ?? 0,
-              json['2nd'] ?? 0,
-              json['3rd'] ?? 0,
-              json['4th'] ?? 0,
-              json['5th'] ?? 0,
-              json['6th'] ?? 0,
-            ].map(Number);
-          } catch {
-            return [];
-          }
-        }).filter((arr) => arr.length === 6 && !arr.includes(0));
+        const parsed = predictions
+          .map((p) => {
+            try {
+              const json = JSON.parse(p.numbers);
+              if (Array.isArray(json)) return json.map(Number);
+              return [
+                json['1st'] ?? 0,
+                json['2nd'] ?? 0,
+                json['3rd'] ?? 0,
+                json['4th'] ?? 0,
+                json['5th'] ?? 0,
+                json['6th'] ?? 0,
+              ].map(Number);
+            } catch {
+              return [];
+            }
+          })
+          .filter((arr) => arr.length === 6 && !arr.includes(0));
 
         if (parsed.length >= 5) {
           return parsed.slice(0, 5);
         }
       }
     } catch (e) {
-      this.logger.warn(`예측 번호 조회 중 예외 발생, 기본 필터링 세트 사용: ${e}`);
+      this.logger.warn(
+        `예측 번호 조회 중 예외 발생, 기본 필터링 세트 사용: ${e}`,
+      );
     }
 
     // 기본 필터링 추천 5게임

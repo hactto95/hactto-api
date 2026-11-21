@@ -53,7 +53,9 @@ describe('PublishAiWeeklyBriefingHandler', () => {
       lottoRound: 1150,
     });
 
-    const result = await handler.execute(new PublishAiWeeklyBriefingCommand(1150));
+    const result = await handler.execute(
+      new PublishAiWeeklyBriefingCommand(1150),
+    );
 
     expect(result.success).toBe(true);
     expect(result.skipped).toBe(true);
@@ -81,7 +83,9 @@ describe('PublishAiWeeklyBriefingHandler', () => {
       title: '테스트 타이틀',
     });
 
-    const result = await handler.execute(new PublishAiWeeklyBriefingCommand(1150));
+    const result = await handler.execute(
+      new PublishAiWeeklyBriefingCommand(1150),
+    );
 
     expect(result.success).toBe(true);
     expect(result.postId).toBe(100);

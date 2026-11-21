@@ -10,10 +10,14 @@ export interface AiPostPublishNotification {
 export class SlackNotifierService {
   private readonly logger = new Logger(SlackNotifierService.name);
 
-  async notifyAiPostPublished(data: AiPostPublishNotification): Promise<boolean> {
+  async notifyAiPostPublished(
+    data: AiPostPublishNotification,
+  ): Promise<boolean> {
     const webhookUrl = process.env.SLACK_WEBHOOK_URL;
     if (!webhookUrl) {
-      this.logger.debug('SLACK_WEBHOOK_URL is not set. Skipping Slack notification.');
+      this.logger.debug(
+        'SLACK_WEBHOOK_URL is not set. Skipping Slack notification.',
+      );
       return false;
     }
 

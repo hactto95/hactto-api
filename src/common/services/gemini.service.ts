@@ -6,7 +6,11 @@ export interface LottoBriefingContext {
   bonusNumber: number;
   oddEvenRatio: string;
   sumRange: number;
-  analyzedGames: Array<{ label: string; numbers: number[]; matchWithPrevious: number }>;
+  analyzedGames: Array<{
+    label: string;
+    numbers: number[];
+    matchWithPrevious: number;
+  }>;
   bestPickGame: { label: string; numbers: number[]; reason: string };
 }
 
@@ -58,10 +62,14 @@ ${ctx.analyzedGames.map((g) => `  * ${g.label}: [ ${g.numbers.join(', ')} ] (직
     `.trim();
   }
 
-  async generateBriefing(ctx: LottoBriefingContext): Promise<{ title: string; content: string }> {
+  async generateBriefing(
+    ctx: LottoBriefingContext,
+  ): Promise<{ title: string; content: string }> {
     const apiKey = this.apiKey || process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error('GEMINI_API_KEY is not configured in environment variables.');
+      throw new Error(
+        'GEMINI_API_KEY is not configured in environment variables.',
+      );
     }
 
     const prompt = this.buildLottoBriefingPrompt(ctx);
@@ -95,7 +103,10 @@ ${ctx.analyzedGames.map((g) => `  * ${g.label}: [ ${g.numbers.join(', ')} ] (직
     const titleLine = lines.find((l: string) => l.startsWith('# '));
     if (titleLine) {
       title = titleLine.replace(/^#\s*/, '').trim();
-      content = lines.filter((l: string) => l !== titleLine).join('\n').trim();
+      content = lines
+        .filter((l: string) => l !== titleLine)
+        .join('\n')
+        .trim();
     }
 
     return { title, content };

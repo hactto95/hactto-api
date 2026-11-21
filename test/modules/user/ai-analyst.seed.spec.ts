@@ -1,4 +1,7 @@
-import { ensureAiAnalystUser, AI_ANALYST_USER_ID } from '../../../src/modules/user/infrastructure/seeds/ai-analyst.seed';
+import {
+  ensureAiAnalystUser,
+  AI_ANALYST_USER_ID,
+} from '../../../src/modules/user/infrastructure/seeds/ai-analyst.seed';
 import { prisma } from '../../../src/libs/prisma';
 
 jest.mock('../../../src/libs/prisma', () => ({
