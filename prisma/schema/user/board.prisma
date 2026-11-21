@@ -25,6 +25,7 @@ model Post {
   isDeleted        Boolean       @default(false) @map("is_deleted")
   isBlocked        Boolean       @default(false) @map("is_blocked")
   isAdmin          Boolean       @default(false) @map("is_admin")
+  isAi             Boolean       @default(false) @map("is_ai")
 
   user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   reports     PostReport[]
@@ -33,6 +34,7 @@ model Post {
   attachments PostAttachment[]
 
   @@index([userId])
+  @@index([lottoRound, category, isAi])
   @@map("post")
 }
 
