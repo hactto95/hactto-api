@@ -11,6 +11,7 @@ import {
   NotFoundException,
   UnauthorizedException,
   UseGuards,
+  Logger,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -32,6 +33,8 @@ import { RedisService } from '../../../helpers/redis/application/redis.service';
 @ApiTags('- Board')
 @Controller('user/board')
 export class BoardController {
+  private readonly logger = new Logger(BoardController.name);
+
   constructor(
     private readonly requestParser: RequestParser,
     private readonly lottoOcrService: LottoOcrService,
@@ -45,6 +48,8 @@ export class BoardController {
     @Query('sort') sort: 'latest' | 'likes' = 'latest',
     @Query('rank') rank?: string,
     @Query('round') round?: string,
+    @Query('query') query?: string,
+    @Query('target') target?: 'all' | 'title' | 'content' | 'author',
     @Query('page') pageStr: string = '1',
     @Query('limit') limitStr: string = '15',
   ) {
@@ -65,29 +70,53 @@ export class BoardController {
       }
     }
 
+    if (query) {
+      const q = query.trim();
+      if (q) {
+        if (target === 'title') {
+          where.title = { contains: q };
+        } else if (target === 'content') {
+          where.content = { contains: q };
+        } else if (target === 'author') {
+          where.user = { nickname: { contains: q } };
+        } else {
+          where.OR = [
+            { title: { contains: q } },
+            { content: { contains: q } },
+            { user: { nickname: { contains: q } } },
+          ];
+        }
+      }
+    }
+
     const orderBy: any =
       sort === 'likes' ? { likes: { _count: 'desc' } } : { createdAt: 'desc' };
 
-    const [posts, total] = await Promise.all([
-      prisma.post.findMany({
-        where,
-        orderBy,
-        skip,
-        take: limit,
-        include: {
-          user: { select: { id: true, nickname: true, avatarUrl: true } },
-          _count: { select: { likes: true, comments: true } },
-          attachments: true,
-        },
-      }),
-      prisma.post.count({ where }),
-    ]);
+    try {
+      const [posts, total] = await Promise.all([
+        prisma.post.findMany({
+          where,
+          orderBy,
+          skip,
+          take: limit,
+          include: {
+            user: { select: { id: true, nickname: true, avatarUrl: true } },
+            _count: { select: { likes: true, comments: true } },
+            attachments: true,
+          },
+        }),
+        prisma.post.count({ where }),
+      ]);
 
-    return {
-      success: true,
-      data: posts,
-      meta: { total, page, limit },
-    };
+      return {
+        success: true,
+        data: posts,
+        meta: { total, page, limit },
+      };
+    } catch (err: any) {
+      this.logger.error('Failed to get posts:', err);
+      throw err;
+    }
   }
 
   @ApiOperation({ summary: 'Get single post details' })
