@@ -11,10 +11,19 @@ import {
   NotFoundException,
   BadRequestException,
   Inject,
+  Optional,
 } from '@nestjs/common';
+import { CommandBus } from '@nestjs/cqrs';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Admin } from '../../../common/decorators/admin.decorator';
 import { prisma } from '../../../libs/prisma';
+import { BoardCategory } from '../../../generated/prisma/client';
+import { SlackNotifierService } from '../../../common/services/slack-notifier.service';
+import { PublishAiWeeklyBriefingCommand } from '../../lottery-analysis/application/commands/publish-ai-weekly-briefing.command';
+import {
+  AI_ANALYST_USER_ID,
+  ensureAiAnalystUser,
+} from '../../user/infrastructure/seeds/ai-analyst.seed';
 import {
   AnswerInquiryDto,
   RejectRefundDto,
@@ -51,6 +60,8 @@ export class ManagerController {
     private readonly redisService: RedisService,
     private readonly badWordsService: BadWordsService,
     private readonly appGateway: AppGateway,
+    @Optional() private readonly commandBus?: CommandBus,
+    @Optional() private readonly slackNotifierService?: SlackNotifierService,
   ) {}
 
   @ApiOperation({ summary: 'Get all inquiries for admin' })
@@ -934,5 +945,112 @@ export class ManagerController {
     this.appGateway.sendToUser(userId, 'new-notification', notification);
 
     return { success: true, data: notification };
+  }
+
+  // ==========================================
+  // 관리자 AI 주간 노하우 게시글 관리 및 수동 발행 API
+  // ==========================================
+
+  @ApiOperation({ summary: 'AI 분석관 게시글 목록 및 최신 회차 조회' })
+  @Get('ai-posts')
+  async getAiPosts() {
+    const [posts, latestWinning] = await Promise.all([
+      prisma.post.findMany({
+        where: {
+          isAi: true,
+          isDeleted: false,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+      }),
+      prisma.winningNumber.findFirst({
+        where: { isDrawn: true },
+        orderBy: { episode: 'desc' },
+      }),
+    ]);
+
+    return {
+      success: true,
+      data: {
+        latestRound: latestWinning?.episode || null,
+        posts,
+      },
+    };
+  }
+
+  @ApiOperation({ summary: 'Gemini AI 주간 노하우 게시글 수동 생성 및 발행' })
+  @Post('ai-posts/generate')
+  async generateAiPost(@Body() body: { round?: number; force?: boolean }) {
+    if (!this.commandBus) {
+      throw new BadRequestException('CommandBus가 초기화되지 않았습니다.');
+    }
+
+    const roundNum =
+      body.round && !isNaN(Number(body.round)) ? Number(body.round) : undefined;
+    const force = Boolean(body.force);
+
+    const result = await this.commandBus.execute(
+      new PublishAiWeeklyBriefingCommand(roundNum, force),
+    );
+
+    if (!result.success) {
+      throw new BadRequestException(
+        '해당 회차의 당첨 번호를 찾을 수 없거나 AI 게시글 생성에 실패했습니다.',
+      );
+    }
+
+    return {
+      success: true,
+      data: result,
+    };
+  }
+
+  @ApiOperation({ summary: '핵또 AI 분석관 명의로 직접 노하우 게시글 등록' })
+  @Post('ai-posts/manual')
+  async createManualAiPost(
+    @Body() body: { round?: number; title: string; content: string },
+  ) {
+    if (!body.title?.trim() || !body.content?.trim()) {
+      throw new BadRequestException('제목과 본문 내용을 모두 입력해 주세요.');
+    }
+
+    let roundNum =
+      body.round && !isNaN(Number(body.round)) ? Number(body.round) : undefined;
+    if (!roundNum) {
+      const latestWinning = await prisma.winningNumber.findFirst({
+        where: { isDrawn: true },
+        orderBy: { episode: 'desc' },
+      });
+      roundNum = latestWinning?.episode || 0;
+    }
+
+    await ensureAiAnalystUser();
+
+    const post = await prisma.post.create({
+      data: {
+        userId: AI_ANALYST_USER_ID,
+        category: BoardCategory.KNOWHOW,
+        title: body.title.trim(),
+        content: body.content.trim(),
+        lottoRound: roundNum || null,
+        isAdmin: true,
+        isAi: true,
+      },
+    });
+
+    if (this.slackNotifierService && roundNum) {
+      await this.slackNotifierService
+        .notifyAiPostPublished({
+          round: roundNum,
+          title: post.title,
+          postId: post.id,
+        })
+        .catch(() => {});
+    }
+
+    return {
+      success: true,
+      data: post,
+    };
   }
 }

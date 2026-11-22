@@ -1,6 +1,7 @@
 import { OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import * as crypto from 'crypto';
+import { SlackNotifierService } from '../../../common/services/slack-notifier.service';
 
 // Base32 Decoder for TOTP Secret Key
 function decodeBase32(base32: string): Buffer {
@@ -59,7 +60,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     this.redisClient.disconnect();
   }
 
-  async validateMasterKey(masterKey: string): Promise<boolean> {
+  async validateMasterKey(
+    masterKey: string,
+    meta?: { ip?: string; userId?: string },
+  ): Promise<boolean> {
     if (!masterKey) return false;
 
     // 1. Check Redis session cache
@@ -82,6 +86,15 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         if (expectedOtp === masterKey) {
           // 4. Save session in Redis for 1 hour (3600s)
           await this.redisClient.set(sessionKey, 'true', 'EX', 3600);
+
+          // 5. Notify Slack on new Admin OTP login session
+          new SlackNotifierService()
+            .notifyAdminLogin({
+              ip: meta?.ip || 'unknown',
+              userId: meta?.userId,
+            })
+            .catch(() => {});
+
           return true;
         }
       } catch {

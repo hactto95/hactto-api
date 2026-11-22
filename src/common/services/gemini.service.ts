@@ -18,7 +18,9 @@ export interface LottoBriefingContext {
 export class GeminiService {
   private readonly logger = new Logger(GeminiService.name);
   private readonly apiKey = process.env.GEMINI_API_KEY;
-  private readonly model = 'gemini-2.5-flash';
+  private readonly primaryModel =
+    process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+  private readonly fallbackModel = 'gemini-3.5-flash';
 
   buildLottoBriefingPrompt(ctx: LottoBriefingContext): string {
     return `
@@ -62,6 +64,26 @@ ${ctx.analyzedGames.map((g) => `  * ${g.label}: [ ${g.numbers.join(', ')} ] (직
     `.trim();
   }
 
+  private async callGeminiApi(
+    model: string,
+    apiKey: string,
+    prompt: string,
+  ): Promise<Response> {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    return await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.75,
+          maxOutputTokens: 3000,
+        },
+      }),
+      signal: AbortSignal.timeout(20000),
+    });
+  }
+
   async generateBriefing(
     ctx: LottoBriefingContext,
   ): Promise<{ title: string; content: string }> {
@@ -73,24 +95,29 @@ ${ctx.analyzedGames.map((g) => `  * ${g.label}: [ ${g.numbers.join(', ')} ] (직
     }
 
     const prompt = this.buildLottoBriefingPrompt(ctx);
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${apiKey}`;
+    let targetModel = this.primaryModel;
+    let response = await this.callGeminiApi(targetModel, apiKey, prompt);
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.75,
-          maxOutputTokens: 3000,
-        },
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
+    // If primary model experiences temporary outage (503), not found (404), or rate limits (429), try fallback model
+    if (
+      !response.ok &&
+      (response.status === 503 ||
+        response.status === 404 ||
+        response.status === 429) &&
+      this.primaryModel !== this.fallbackModel
+    ) {
+      this.logger.warn(
+        `Gemini API failed with status ${response.status} using model ${this.primaryModel}. Falling back to ${this.fallbackModel}...`,
+      );
+      targetModel = this.fallbackModel;
+      response = await this.callGeminiApi(targetModel, apiKey, prompt);
+    }
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Gemini API error: ${response.status} - ${errText}`);
+      throw new Error(
+        `Gemini API error (${targetModel}): ${response.status} - ${errText}`,
+      );
     }
 
     const data = await response.json();
