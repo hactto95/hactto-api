@@ -14,26 +14,38 @@ describe('GeminiService', () => {
       bonusNumber: 7,
       oddEvenRatio: '3:3',
       sumRange: 136,
+      recentHotNumbers: [18, 24, 37],
+      recentColdNumbers: [5, 12, 40],
       analyzedGames: [
         {
           label: '게임 A',
           numbers: [3, 8, 19, 24, 33, 42],
           matchWithPrevious: 2,
+          sourceType: 'ALGORITHM',
+          sourceName: '핵또 총합 밸런스 최적화 알고리즘',
+          description: '총합 129 및 3:3 홀짝 밸런스',
         },
         {
           label: '게임 B',
           numbers: [4, 18, 25, 29, 37, 45],
           matchWithPrevious: 4,
+          sourceType: 'ALGORITHM',
+          sourceName: '핵또 최다 출현 가중치 알고리즘',
+          description: '직전 당첨번호 흐름 계승',
         },
         {
           label: '게임 C',
           numbers: [7, 14, 21, 28, 35, 44],
           matchWithPrevious: 0,
+          sourceType: 'HISTORICAL_PATTERN',
+          sourceName: '최근 5회차 콜드볼 반등 주기 분석',
+          description: '보너스볼 이월 및 미출현 구간 반등',
         },
       ],
       bestPickGame: {
         label: '게임 B',
         numbers: [4, 18, 25, 29, 37, 45],
+        sourceName: '핵또 최다 출현 가중치 알고리즘',
         reason:
           '직전 1150회차 당첨번호 중 3개 구간 번호대 일치 및 짝수 집중 흐름 계승',
       },
@@ -79,6 +91,7 @@ describe('GeminiService', () => {
       bestPickGame: {
         label: '게임 A',
         numbers: [1, 2, 3, 4, 5, 6],
+        sourceName: '테스트 알고리즘',
         reason: '동일',
       },
     });
