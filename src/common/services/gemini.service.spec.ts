@@ -55,7 +55,7 @@ describe('GeminiService', () => {
           content: {
             parts: [
               {
-                text: '# 🔥 [1150회 복기] 핵또 AI가 엄선한 이번 주 원픽 번호 대공개!\n\n안녕하세요 핵또 AI 분석관입니다.',
+                text: '# [1150회 복기] 핵또 AI가 엄선한 이번 주 원픽 번호 대공개!\n\n안녕하세요 핵또 AI 분석관입니다.',
               },
             ],
           },
@@ -84,7 +84,7 @@ describe('GeminiService', () => {
     });
 
     expect(result.title).toBe(
-      '🔥 [1150회 복기] 핵또 AI가 엄선한 이번 주 원픽 번호 대공개!',
+      '[1150회 복기] 핵또 AI가 엄선한 이번 주 원픽 번호 대공개!',
     );
     expect(result.content).toBe('안녕하세요 핵또 AI 분석관입니다.');
 

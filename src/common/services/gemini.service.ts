@@ -18,7 +18,9 @@ export interface LottoBriefingContext {
 export class GeminiService {
   private readonly logger = new Logger(GeminiService.name);
   private readonly apiKey = process.env.GEMINI_API_KEY;
-  private readonly model = 'gemini-2.5-flash';
+  private readonly primaryModel =
+    process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+  private readonly fallbackModel = 'gemini-3.5-flash';
 
   buildLottoBriefingPrompt(ctx: LottoBriefingContext): string {
     return `
@@ -35,12 +37,13 @@ ${ctx.analyzedGames.map((g) => `  * ${g.label}: [ ${g.numbers.join(', ')} ] (직
   - 원픽 선정 사유: ${ctx.bestPickGame.reason}
 
 [블로그 포스팅 작성 가이드라인]
+* 중요: 제목과 본문 전체에서 기본 이모지(🔥, 👋, 💡, 📊, 🏆 등 유니코드 이모지)는 절대 사용하지 마세요. 깔끔한 텍스트와 마크다운 기호만 사용해 주세요.
 1. **헤드라인 (Title)**:
-   - 파워블로거 특유의 호기심을 자극하고 친근한 제목
-   - 예: "🔥 [${ctx.round}회 복기] 지난주 번호와 가장 닮은 이번 주 원픽은? 핵또 AI가 분석한 다음 회차 필터링 팁!"
+   - 파워블로거 특유의 호기심을 자극하고 친근한 제목 (이모지 사용 금지)
+   - 예: "[${ctx.round}회 복기] 지난주 번호와 가장 닮은 이번 주 원픽은? 핵또 AI가 분석한 다음 회차 필터링 팁!"
 
 2. **도입부 (Intro)**:
-   - "안녕하세요, 로또를 데이터로 재미있게 푸는 핵또 AI 분석관입니다! 👋" 로 밝고 에너지 넘치게 시작.
+   - "안녕하세요, 로또를 데이터로 재미있게 푸는 핵또 AI 분석관입니다!" 로 밝고 에너지 넘치게 시작.
    - 지난주 ${ctx.round}회차 추첨 결과에 대한 가벼운 코멘트와 독자들의 안부 인사.
 
 3. **1부: 지난 회차 핵심 패턴 3분 요약**:
@@ -51,15 +54,35 @@ ${ctx.analyzedGames.map((g) => `  * ${g.label}: [ ${g.numbers.join(', ')} ] (직
 
 5. **3부: 꿀팁! 핵또(Hactto) 사이트 제대로 200% 활용하는 법**:
    - 독자들에게 핵또 사이트의 실질적 활용 팁 안내:
-     * 💡 [번호 생성기]: 이번 원픽 번호에 나만의 고정수나 제외수를 넣어 나만의 맞춤 게임 만들기
-     * 📊 [통계 차트 / 볼 분석]: 특정 번호가 최근 몇 주 동안 미출현했는지 직접 눈으로 확인하기
-     * 🏆 [노하우 게시판]: 여러분만의 분석 가설이나 이번 주 느낌 좋은 번호를 댓글로 공유해보기
+     * [번호 생성기]: 이번 원픽 번호에 나만의 고정수나 제외수를 넣어 나만의 맞춤 게임 만들기
+     * [통계 차트 / 볼 분석]: 특정 번호가 최근 몇 주 동안 미출현했는지 직접 눈으로 확인하기
+     * [노하우 게시판]: 여러분만의 분석 가설이나 이번 주 느낌 좋은 번호를 댓글로 공유해보기
 
 6. **마무리 및 독자 참여 유도**:
    - "여러분이 보시기에 이번 주 가장 매력적인 번호는 몇 번인가요? 댓글로 자유롭게 남겨주세요!"
    - 하단 필수 면책 고지 배너:
      > [!NOTE] 면책 조항: 본 칼럼은 과거 통계 데이터와 알고리즘에 기반한 순수 엔터테인먼트/분석 콘텐츠입니다. 로또 추첨은 완전한 독립 확률 시행이며 당첨을 보장하지 않습니다. 건전한 복권 문화를 응원합니다!
     `.trim();
+  }
+
+  private async callGeminiApi(
+    model: string,
+    apiKey: string,
+    prompt: string,
+  ): Promise<Response> {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    return await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.75,
+          maxOutputTokens: 3000,
+        },
+      }),
+      signal: AbortSignal.timeout(20000),
+    });
   }
 
   async generateBriefing(
@@ -73,31 +96,36 @@ ${ctx.analyzedGames.map((g) => `  * ${g.label}: [ ${g.numbers.join(', ')} ] (직
     }
 
     const prompt = this.buildLottoBriefingPrompt(ctx);
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${apiKey}`;
+    let targetModel = this.primaryModel;
+    let response = await this.callGeminiApi(targetModel, apiKey, prompt);
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.75,
-          maxOutputTokens: 3000,
-        },
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
+    // If primary model experiences temporary outage (503), not found (404), or rate limits (429), try fallback model
+    if (
+      !response.ok &&
+      (response.status === 503 ||
+        response.status === 404 ||
+        response.status === 429) &&
+      this.primaryModel !== this.fallbackModel
+    ) {
+      this.logger.warn(
+        `Gemini API failed with status ${response.status} using model ${this.primaryModel}. Falling back to ${this.fallbackModel}...`,
+      );
+      targetModel = this.fallbackModel;
+      response = await this.callGeminiApi(targetModel, apiKey, prompt);
+    }
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Gemini API error: ${response.status} - ${errText}`);
+      throw new Error(
+        `Gemini API error (${targetModel}): ${response.status} - ${errText}`,
+      );
     }
 
     const data = await response.json();
     const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
     const lines = rawText.split('\n');
-    let title = `🔥 [${ctx.round}회 분석] 직전 당첨번호와 가장 닮은 이번 주 원픽 & 핵또 활용법!`;
+    let title = `[${ctx.round}회 분석] 직전 당첨번호와 가장 닮은 이번 주 원픽 & 핵또 활용법!`;
     let content = rawText;
 
     const titleLine = lines.find((l: string) => l.startsWith('# '));

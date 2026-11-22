@@ -10,6 +10,7 @@ import {
   ensureAiAnalystUser,
 } from '../../../user/infrastructure/seeds/ai-analyst.seed';
 import { GetLatestWinningNumberQuery } from '../../../number/application/queries/get-latest-winning-number.query';
+import { GetWinningNumberByEpisodeQuery } from '../../../number/application/queries/get-winning-number-by-episode.query';
 
 @CommandHandler(PublishAiWeeklyBriefingCommand)
 export class PublishAiWeeklyBriefingHandler implements ICommandHandler<PublishAiWeeklyBriefingCommand> {
@@ -21,43 +22,62 @@ export class PublishAiWeeklyBriefingHandler implements ICommandHandler<PublishAi
     private readonly slackNotifierService: SlackNotifierService,
   ) {}
 
-  async execute(
-    command: PublishAiWeeklyBriefingCommand,
-  ): Promise<{ success: boolean; postId?: number; skipped?: boolean }> {
+  async execute(command: PublishAiWeeklyBriefingCommand): Promise<{
+    success: boolean;
+    postId?: number;
+    skipped?: boolean;
+    round?: number;
+    title?: string;
+  }> {
     try {
-      // 1. 최신 당첨 번호 조회
-      const latestWinning = await this.queryBus.execute(
-        new GetLatestWinningNumberQuery(),
-      );
+      // 1. 대상 회차 또는 최신 당첨 번호 조회
+      const targetWinning = command.round
+        ? await this.queryBus.execute(
+            new GetWinningNumberByEpisodeQuery(command.round),
+          )
+        : await this.queryBus.execute(new GetLatestWinningNumberQuery());
 
-      if (!latestWinning) {
-        this.logger.warn('최신 당첨 번호를 찾을 수 없습니다.');
+      if (!targetWinning) {
+        this.logger.warn(
+          command.round
+            ? `제 ${command.round}회차 당첨 번호를 찾을 수 없습니다.`
+            : '최신 당첨 번호를 찾을 수 없습니다.',
+        );
         return { success: false };
       }
 
-      const round = command.round || latestWinning.episode;
+      const round = command.round || targetWinning.episode;
 
-      // 2. 멱등성 검사: 이미 해당 회차 AI 노하우 글이 등록되어 있다면 스킵
-      const existing = await prisma.post.findFirst({
-        where: {
-          lottoRound: round,
-          category: BoardCategory.KNOWHOW,
-          isAi: true,
-        },
-      });
+      // 2. 멱등성 검사: force가 아닐 때 이미 해당 회차 AI 노하우 글이 등록되어 있다면 스킵
+      if (!command.force) {
+        const existing = await prisma.post.findFirst({
+          where: {
+            lottoRound: round,
+            category: BoardCategory.KNOWHOW,
+            isAi: true,
+            isDeleted: false,
+          },
+        });
 
-      if (existing) {
-        this.logger.log(
-          `제 ${round}회차 AI 주간 노하우 글이 이미 존재합니다 (Post ID: ${existing.id}). 스킵합니다.`,
-        );
-        return { success: true, postId: existing.id, skipped: true };
+        if (existing) {
+          this.logger.log(
+            `제 ${round}회차 AI 주간 노하우 글이 이미 존재합니다 (Post ID: ${existing.id}). 스킵합니다.`,
+          );
+          return {
+            success: true,
+            postId: existing.id,
+            skipped: true,
+            round,
+            title: existing.title,
+          };
+        }
       }
 
       // 3. AI 분석관 계정 보장
       await ensureAiAnalystUser();
 
       // 4. 직전 회차 통계 계산
-      const numberArray = latestWinning.getNumberArray();
+      const numberArray = targetWinning.getNumberArray();
       const sixBalls = numberArray
         .slice(0, 6)
         .sort((a: number, b: number) => a - b);
@@ -123,7 +143,7 @@ export class PublishAiWeeklyBriefingHandler implements ICommandHandler<PublishAi
       });
 
       this.logger.log(
-        `🎉 제 ${round}회차 AI 노하우 게시글이 성공적으로 발행되었습니다 (Post ID: ${post.id})`,
+        `제 ${round}회차 AI 노하우 게시글이 성공적으로 발행되었습니다 (Post ID: ${post.id})`,
       );
 
       // 8. 슬랙 알림 발송
@@ -133,7 +153,12 @@ export class PublishAiWeeklyBriefingHandler implements ICommandHandler<PublishAi
         postId: post.id,
       });
 
-      return { success: true, postId: post.id };
+      return {
+        success: true,
+        postId: post.id,
+        round,
+        title: post.title,
+      };
     } catch (error: any) {
       this.logger.error('AI 주간 노하우 글 발행 중 오류 발생:', error);
       await this.slackNotifierService.notifyAiPostFailed(
