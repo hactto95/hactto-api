@@ -31,8 +31,13 @@ export class GeminiService {
   private readonly logger = new Logger(GeminiService.name);
   private readonly apiKey = process.env.GEMINI_API_KEY;
   private readonly primaryModel =
-    process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-  private readonly fallbackModel = 'gemini-3.5-flash';
+    process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+  private readonly fallbackModel =
+    process.env.GEMINI_FALLBACK_MODEL ||
+    (process.env.GEMINI_MODEL === 'gemini-3.5-flash' ||
+    !process.env.GEMINI_MODEL
+      ? 'gemini-flash-latest'
+      : 'gemini-3.5-flash');
 
   buildLottoBriefingPrompt(ctx: LottoBriefingContext): string {
     const hotListStr =
@@ -122,6 +127,7 @@ ${ctx.analyzedGames
     model: string,
     apiKey: string,
     prompt: string,
+    timeoutMs = 25000,
   ): Promise<Response> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     return await fetch(url, {
@@ -137,7 +143,7 @@ ${ctx.analyzedGames
           },
         },
       }),
-      signal: AbortSignal.timeout(45000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   }
 
@@ -153,27 +159,44 @@ ${ctx.analyzedGames
 
     const prompt = this.buildLottoBriefingPrompt(ctx);
     let targetModel = this.primaryModel;
-    let response = await this.callGeminiApi(targetModel, apiKey, prompt);
+    let response: Response | null = null;
 
-    // If primary model experiences temporary outage (503), not found (404), or rate limits (429), try fallback model
-    if (
-      !response.ok &&
-      (response.status === 503 ||
-        response.status === 404 ||
-        response.status === 429) &&
-      this.primaryModel !== this.fallbackModel
-    ) {
+    try {
+      response = await this.callGeminiApi(targetModel, apiKey, prompt, 25000);
+    } catch (err: any) {
       this.logger.warn(
-        `Gemini API failed with status ${response.status} using model ${this.primaryModel}. Falling back to ${this.fallbackModel}...`,
+        `Gemini API request failed or timed out with primary model ${targetModel}: ${err?.message || err}. Attempting fallback...`,
       );
-      targetModel = this.fallbackModel;
-      response = await this.callGeminiApi(targetModel, apiKey, prompt);
     }
 
-    if (!response.ok) {
-      const errText = await response.text();
+    // If primary model failed, timed out, or returned temporary outage / not found / rate limit
+    const needsFallback =
+      !response ||
+      (!response.ok &&
+        (response.status === 503 ||
+          response.status === 404 ||
+          response.status === 429 ||
+          response.status >= 500));
+
+    if (needsFallback && targetModel !== this.fallbackModel) {
+      this.logger.warn(
+        `Falling back from ${targetModel} to fallback model ${this.fallbackModel}...`,
+      );
+      targetModel = this.fallbackModel;
+      try {
+        response = await this.callGeminiApi(targetModel, apiKey, prompt, 30000);
+      } catch (fallbackErr: any) {
+        this.logger.error(
+          `Fallback model ${this.fallbackModel} also failed: ${fallbackErr?.message || fallbackErr}`,
+        );
+        throw fallbackErr;
+      }
+    }
+
+    if (!response || !response.ok) {
+      const errText = response ? await response.text() : 'Request timed out';
       throw new Error(
-        `Gemini API error (${targetModel}): ${response.status} - ${errText}`,
+        `Gemini API error (${targetModel}): ${response?.status || 'TIMEOUT'} - ${errText}`,
       );
     }
 
