@@ -37,14 +37,14 @@ export class SlackNotifierService {
     const postUrl = `${appUrl}/dashboard/board?postId=${data.postId}`;
 
     const payload = {
-      text: `🎉 *[핵또] 제 ${data.round}회 AI 주간 분석 노하우 게시글 자동 발행 완료!*`,
+      text: `*[핵또] 제 ${data.round}회 AI 주간 분석 노하우 게시글 자동 발행 완료*`,
       blocks: [
         {
           type: 'header',
           text: {
             type: 'plain_text',
-            text: `🤖 제 ${data.round}회 AI 분석관 노하우 글 발행 완료`,
-            emoji: true,
+            text: `[핵또] 제 ${data.round}회 AI 분석관 노하우 글 발행 완료`,
+            emoji: false,
           },
         },
         {
@@ -61,8 +61,8 @@ export class SlackNotifierService {
               type: 'button',
               text: {
                 type: 'plain_text',
-                text: '게시글 보러가기 ➔',
-                emoji: true,
+                text: '게시글 보러가기',
+                emoji: false,
               },
               url: postUrl,
               style: 'primary',
@@ -96,14 +96,14 @@ export class SlackNotifierService {
     if (!webhookUrl) return false;
 
     const payload = {
-      text: `🚨 *[핵또 경보] 제 ${round}회 AI 분석글 자동 발행 실패!*`,
+      text: `*[핵또 경보] 제 ${round}회 AI 분석글 자동 발행 실패*`,
       blocks: [
         {
           type: 'header',
           text: {
             type: 'plain_text',
-            text: `🚨 제 ${round}회 AI 분석글 발행 실패`,
-            emoji: true,
+            text: `[핵또 경보] 제 ${round}회 AI 분석글 발행 실패`,
+            emoji: false,
           },
         },
         {
@@ -138,14 +138,14 @@ export class SlackNotifierService {
     });
 
     const payload = {
-      text: `🔐 *[핵또 보안] 관리자(Admin) OTP 인증 로그인 발생!*`,
+      text: `*[핵또 보안] 관리자(Admin) OTP 인증 로그인 발생*`,
       blocks: [
         {
           type: 'header',
           text: {
             type: 'plain_text',
-            text: `🔐 [핵또] 관리자(Admin) 로그인 알림`,
-            emoji: true,
+            text: `[핵또] 관리자(Admin) 로그인 알림`,
+            emoji: false,
           },
         },
         {
@@ -186,14 +186,14 @@ export class SlackNotifierService {
         : '';
 
     const payload = {
-      text: `🎊 *[핵또] 신규 회원 가입 완료! (${data.nickname})*`,
+      text: `*[핵또] 신규 회원 가입 완료 (${data.nickname})*`,
       blocks: [
         {
           type: 'header',
           text: {
             type: 'plain_text',
-            text: `🎊 [핵또] 신규 회원가입 알림`,
-            emoji: true,
+            text: `[핵또] 신규 회원가입 알림`,
+            emoji: false,
           },
         },
         {
