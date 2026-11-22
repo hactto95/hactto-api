@@ -7,11 +7,15 @@ jest.mock('../../../src/libs/prisma', () => ({
     post: {
       findFirst: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
     },
     user: {
       upsert: jest.fn(),
     },
     prediction: {
+      findMany: jest.fn(),
+    },
+    winningNumber: {
       findMany: jest.fn(),
     },
   },
@@ -42,7 +46,7 @@ describe('PublishAiWeeklyBriefingHandler', () => {
     );
   });
 
-  it('should skip publishing if post already exists for the episode', async () => {
+  it('should skip publishing if post already exists for the episode and not force', async () => {
     queryBus.execute.mockResolvedValue({
       episode: 1150,
       getNumberArray: () => [1, 2, 3, 4, 5, 6, 7],
@@ -51,6 +55,7 @@ describe('PublishAiWeeklyBriefingHandler', () => {
     (prisma.post.findFirst as jest.Mock).mockResolvedValue({
       id: 999,
       lottoRound: 1150,
+      title: '기존 글',
     });
 
     const result = await handler.execute(
@@ -63,6 +68,54 @@ describe('PublishAiWeeklyBriefingHandler', () => {
     expect(geminiService.generateBriefing).not.toHaveBeenCalled();
   });
 
+  it('should update existing post if force is true', async () => {
+    queryBus.execute.mockResolvedValue({
+      episode: 1150,
+      getNumberArray: () => [1, 2, 3, 4, 5, 6, 7],
+    });
+
+    (prisma.post.findFirst as jest.Mock).mockResolvedValue({
+      id: 999,
+      lottoRound: 1150,
+      title: '기존 잘린 글',
+    });
+    (prisma.user.upsert as jest.Mock).mockResolvedValue({ id: 'AI_AGENT' });
+    (prisma.winningNumber.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.prediction.findMany as jest.Mock).mockResolvedValue([]);
+
+    geminiService.generateBriefing.mockResolvedValue({
+      title: '새로운 완전한 타이틀',
+      content: '새로운 완전한 본문',
+    });
+
+    (prisma.post.update as jest.Mock).mockResolvedValue({
+      id: 999,
+      title: '새로운 완전한 타이틀',
+    });
+
+    const result = await handler.execute(
+      new PublishAiWeeklyBriefingCommand(1150, true),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.postId).toBe(999);
+    expect(prisma.post.update).toHaveBeenCalledWith({
+      where: { id: 999 },
+      data: {
+        title: '새로운 완전한 타이틀',
+        content: '새로운 완전한 본문',
+        isAi: true,
+        isAdmin: true,
+        category: 'KNOWHOW',
+      },
+    });
+    expect(slackNotifierService.notifyAiPostPublished).toHaveBeenCalledWith({
+      round: 1150,
+      title: '새로운 완전한 타이틀',
+      postId: 999,
+    });
+  });
+
   it('should generate briefing, save post and notify slack on new round', async () => {
     queryBus.execute.mockResolvedValue({
       episode: 1150,
@@ -71,6 +124,7 @@ describe('PublishAiWeeklyBriefingHandler', () => {
 
     (prisma.post.findFirst as jest.Mock).mockResolvedValue(null);
     (prisma.user.upsert as jest.Mock).mockResolvedValue({ id: 'AI_AGENT' });
+    (prisma.winningNumber.findMany as jest.Mock).mockResolvedValue([]);
     (prisma.prediction.findMany as jest.Mock).mockResolvedValue([]);
 
     geminiService.generateBriefing.mockResolvedValue({
