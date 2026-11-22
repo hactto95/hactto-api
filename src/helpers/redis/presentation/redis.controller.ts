@@ -59,8 +59,10 @@ export class RedisController {
     const subscription = await this.honService.getSubscription(userId);
 
     if (queryMk) {
-      const isValidMasterKey =
-        await this.redisService.validateMasterKey(queryMk);
+      const isValidMasterKey = await this.redisService.validateMasterKey(
+        queryMk,
+        { ip, userId },
+      );
       return {
         allowed: isValidMasterKey,
         pending: false,

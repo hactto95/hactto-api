@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Optional,
   UnauthorizedException,
   BadRequestException,
   ConflictException,
@@ -10,6 +11,7 @@ import { prisma } from '../../../libs/prisma';
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
 import { RedisService } from '../../../helpers/redis/application/redis.service';
+import { SlackNotifierService } from '../../../common/services/slack-notifier.service';
 
 @Injectable()
 export class AuthService {
@@ -17,6 +19,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly mailService: MailService,
     private readonly redisService: RedisService,
+    @Optional() private readonly slackNotifierService?: SlackNotifierService,
   ) {}
 
   private getRestoreSecret(): string {
@@ -139,6 +142,25 @@ export class AuthService {
 
       return createdUser;
     });
+
+    if (this.slackNotifierService) {
+      prisma.user
+        .count({
+          where: {
+            email: { not: null },
+            deletedAt: null,
+          },
+        })
+        .then((totalMembers) =>
+          this.slackNotifierService?.notifyUserSignup({
+            id: user.id,
+            email: user.email || email,
+            nickname: user.nickname || nickname,
+            totalMembers,
+          }),
+        )
+        .catch(() => {});
+    }
 
     return this.generateTokens(user.id);
   }
