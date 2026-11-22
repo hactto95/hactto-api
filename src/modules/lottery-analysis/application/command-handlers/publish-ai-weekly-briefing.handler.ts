@@ -33,6 +33,7 @@ export class PublishAiWeeklyBriefingHandler implements ICommandHandler<PublishAi
     round?: number;
     title?: string;
   }> {
+    let targetRound = command.round || 0;
     try {
       // 1. 대상 회차 또는 최신 당첨 번호 조회
       const targetWinning = command.round
@@ -51,6 +52,7 @@ export class PublishAiWeeklyBriefingHandler implements ICommandHandler<PublishAi
       }
 
       const round = command.round || targetWinning.episode;
+      targetRound = round;
 
       // 2. 멱등성 검사: force가 아닐 때 이미 해당 회차 AI 노하우 글이 등록되어 있다면 스킵
       const existing = await prisma.post.findFirst({
@@ -232,7 +234,7 @@ export class PublishAiWeeklyBriefingHandler implements ICommandHandler<PublishAi
     } catch (error: any) {
       this.logger.error('AI 주간 노하우 글 발행 중 오류 발생:', error);
       await this.slackNotifierService.notifyAiPostFailed(
-        command.round || 0,
+        targetRound,
         error?.message || String(error),
       );
       throw error;
