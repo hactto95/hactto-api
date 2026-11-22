@@ -103,4 +103,54 @@ describe('GeminiService', () => {
 
     global.fetch = globalFetch;
   });
+
+  it('should fall back to fallbackModel when primary model throws timeout error', async () => {
+    const globalFetch = global.fetch;
+    process.env.GEMINI_API_KEY = 'test-key';
+    process.env.GEMINI_MODEL = 'gemini-3.8-flash';
+
+    const serviceWithCustom = new GeminiService();
+
+    const mockSuccessResponse = {
+      candidates: [
+        {
+          content: {
+            parts: [{ text: '제목: 성공 타이틀\n\n성공 본문입니다.' }],
+          },
+        },
+      ],
+    };
+
+    (global as any).fetch = jest
+      .fn()
+      .mockRejectedValueOnce(
+        new Error('The operation was aborted due to timeout'),
+      )
+      .mockResolvedValueOnce({
+        ok: true,
+        json: jest.fn().mockResolvedValue(mockSuccessResponse),
+      });
+
+    const result = await serviceWithCustom.generateBriefing({
+      round: 1150,
+      winningNumbers: [1, 2, 3, 4, 5, 6],
+      bonusNumber: 7,
+      oddEvenRatio: '3:3',
+      sumRange: 21,
+      analyzedGames: [],
+      bestPickGame: {
+        label: '게임 A',
+        numbers: [1, 2, 3, 4, 5, 6],
+        sourceName: '테스트 알고리즘',
+        reason: '동일',
+      },
+    });
+
+    expect(result.title).toBe('성공 타이틀');
+    expect(result.content).toBe('성공 본문입니다.');
+    expect((global as any).fetch).toHaveBeenCalledTimes(2);
+
+    global.fetch = globalFetch;
+    delete process.env.GEMINI_MODEL;
+  });
 });
