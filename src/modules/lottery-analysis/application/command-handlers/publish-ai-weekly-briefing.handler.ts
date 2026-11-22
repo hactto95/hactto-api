@@ -143,7 +143,7 @@ export class PublishAiWeeklyBriefingHandler implements ICommandHandler<PublishAi
       });
 
       this.logger.log(
-        `🎉 제 ${round}회차 AI 노하우 게시글이 성공적으로 발행되었습니다 (Post ID: ${post.id})`,
+        `제 ${round}회차 AI 노하우 게시글이 성공적으로 발행되었습니다 (Post ID: ${post.id})`,
       );
 
       // 8. 슬랙 알림 발송
