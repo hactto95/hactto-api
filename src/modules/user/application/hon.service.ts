@@ -4,8 +4,17 @@ import {
   IPaymentRepository,
   PAYMENT_REPOSITORY_TOKEN,
 } from '../domain/ports/payment.port';
-import { randomUUID } from 'crypto';
+import { createHmac, randomUUID } from 'crypto';
 import { prisma } from '../../../libs/prisma';
+
+export type MinigameType = 'QUIZ' | 'MEMORY' | 'DETECTIVE' | 'CATCHER';
+
+export const MINIGAME_LABELS: Record<MinigameType, string> = {
+  QUIZ: '로또 지식 퀴즈',
+  MEMORY: '로또볼 메모리 매치',
+  DETECTIVE: '행운의 번호 추리',
+  CATCHER: '스피드 로또 캐처',
+};
 
 @Injectable()
 export class HonService {
@@ -328,5 +337,264 @@ export class HonService {
         console.error(`Failed to provision Hon for user ${v.id}:`, error);
       }
     }
+  }
+
+  /**
+   * 7. 미니게임 KST 당일 자정~23:59:59 범위 계산
+   */
+  private getKstTodayRange(now: Date = new Date()): {
+    startOfKstDay: Date;
+    endOfKstDay: Date;
+    kstDateString: string;
+  } {
+    const kstOffsetMs = 9 * 60 * 60 * 1000;
+    const kstTime = new Date(now.getTime() + kstOffsetMs);
+    const yyyy = kstTime.getUTCFullYear();
+    const mm = String(kstTime.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(kstTime.getUTCDate()).padStart(2, '0');
+    const kstDateString = `${yyyy}-${mm}-${dd}`;
+
+    const startOfKstDay = new Date(`${kstDateString}T00:00:00.000+09:00`);
+    const endOfKstDay = new Date(`${kstDateString}T23:59:59.999+09:00`);
+
+    return { startOfKstDay, endOfKstDay, kstDateString };
+  }
+
+  /**
+   * 8. 미니게임 시작 티켓 발급 (Stateless HMAC-SHA256)
+   */
+  issueMinigameTicket(
+    gameType: string,
+    issuedAtMs: number = Date.now(),
+  ): string {
+    const normalizedType = (gameType || 'QUIZ').toUpperCase();
+    if (!Object.keys(MINIGAME_LABELS).includes(normalizedType)) {
+      throw new BadRequestException('유효하지 않은 미니게임 종류입니다.');
+    }
+    const nonce = randomUUID().slice(0, 8);
+    const payload = `${normalizedType}.${issuedAtMs}.${nonce}`;
+    const secret = process.env.JWT_SECRET || 'hactto-minigame-hmac-secret-2026';
+    const signature = createHmac('sha256', secret)
+      .update(payload)
+      .digest('hex')
+      .slice(0, 24);
+    return `${payload}.${signature}`;
+  }
+
+  /**
+   * 9. 미니게임 티켓 서명 및 최소 플레이 소요 시간(minDurationMs) 검증
+   */
+  verifyMinigameTicket(
+    ticket: string,
+    expectedGameType: string,
+    minDurationMs: number = 4000,
+  ): boolean {
+    if (!ticket || typeof ticket !== 'string') return false;
+    const parts = ticket.split('.');
+    if (parts.length !== 4) return false;
+
+    const [gameType, issuedAtStr, nonce, signature] = parts;
+    if (gameType !== expectedGameType.toUpperCase()) return false;
+
+    const issuedAtMs = Number(issuedAtStr);
+    if (!Number.isFinite(issuedAtMs)) return false;
+
+    const payload = `${gameType}.${issuedAtStr}.${nonce}`;
+    const secret = process.env.JWT_SECRET || 'hactto-minigame-hmac-secret-2026';
+    const expectedSig = createHmac('sha256', secret)
+      .update(payload)
+      .digest('hex')
+      .slice(0, 24);
+
+    if (signature !== expectedSig) return false;
+
+    const elapsed = Date.now() - issuedAtMs;
+    const maxAgeMs = 2 * 60 * 60 * 1000; // 2 hours
+    if (elapsed < minDurationMs || elapsed > maxAgeMs) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * 10. 당일 KST 기준 미니게임 10 HON 및 4종 올클리어(+30 HON) 보상 수령 상태 조회
+   */
+  async getMinigameStatus(userId: string) {
+    const { startOfKstDay, endOfKstDay, kstDateString } =
+      this.getKstTodayRange();
+    const events = await this.honRepository.getHonEvents(userId);
+    const todayEvents = (events || []).filter((ev) => {
+      if (!ev.createdAt) return false;
+      const created = new Date(ev.createdAt);
+      return created >= startOfKstDay && created <= endOfKstDay;
+    });
+
+    const todayRewardEvent = todayEvents.find(
+      (ev) => ev.type === 'MINIGAME_REWARD',
+    );
+    const todayAllClearEvent = todayEvents.find(
+      (ev) => ev.type === 'MINIGAME_ALL_CLEAR_REWARD',
+    );
+
+    const clearedSet = new Set<MinigameType>();
+    for (const ev of todayEvents) {
+      if (
+        ev.type === 'MINIGAME_REWARD' ||
+        ev.type === 'MINIGAME_ALL_CLEAR_REWARD' ||
+        ev.type === 'MINIGAME_CLEAR_LOG'
+      ) {
+        (Object.keys(MINIGAME_LABELS) as MinigameType[]).forEach((gt) => {
+          if (
+            ev.description?.includes(MINIGAME_LABELS[gt]) ||
+            ev.description?.includes(gt)
+          ) {
+            clearedSet.add(gt);
+          }
+        });
+      }
+    }
+
+    if (todayAllClearEvent) {
+      (Object.keys(MINIGAME_LABELS) as MinigameType[]).forEach((gt) =>
+        clearedSet.add(gt),
+      );
+    }
+
+    return {
+      kstDate: kstDateString,
+      rewardClaimedToday: !!todayRewardEvent,
+      allClearClaimedToday: !!todayAllClearEvent,
+      clearedGamesToday: Array.from(clearedSet),
+      claimedAt: todayRewardEvent?.createdAt ?? null,
+      allClearClaimedAt: todayAllClearEvent?.createdAt ?? null,
+      description:
+        todayAllClearEvent?.description ??
+        todayRewardEvent?.description ??
+        null,
+      dailyRewardAmount: 10,
+      allClearRewardAmount: 30,
+    };
+  }
+
+  /**
+   * 11. 미니게임 클리어에 따른 일일 10 HON 지급 + 4종 모두 달성 시 +30 HON 추가 지급 (KST 당일 1회 멱등 보장)
+   */
+  async claimMinigameReward(
+    userId: string,
+    gameType: MinigameType,
+    ticket?: string,
+    clearedGamesFromClient?: MinigameType[],
+  ) {
+    const normalizedType = (gameType || 'QUIZ').toUpperCase() as MinigameType;
+    if (!MINIGAME_LABELS[normalizedType]) {
+      throw new BadRequestException('유효하지 않은 미니게임 종류입니다.');
+    }
+
+    if (ticket && !this.verifyMinigameTicket(ticket, normalizedType, 4000)) {
+      throw new BadRequestException(
+        '비정상적인 게임 완료 요청입니다. 다시 시도해 주세요.',
+      );
+    }
+
+    const status = await this.getMinigameStatus(userId);
+    const currentHon = await this.honRepository.getHon(userId);
+    let currentFree = currentHon ? currentHon.freeBalance : 0;
+    const currentPaid = currentHon ? currentHon.paidBalance : 0;
+
+    const mergedCleared = new Set<MinigameType>(status.clearedGamesToday);
+    mergedCleared.add(normalizedType);
+    if (Array.isArray(clearedGamesFromClient)) {
+      for (const cg of clearedGamesFromClient) {
+        const up = String(cg).toUpperCase() as MinigameType;
+        if (MINIGAME_LABELS[up]) {
+          mergedCleared.add(up);
+        }
+      }
+    }
+
+    let rewardedHon = 0;
+    let baseRewardGrantedNow = false;
+    let allClearRewardGrantedNow = false;
+
+    // 1) 당일 첫 미션 성공 보상 (+10 HON)
+    if (!status.rewardClaimedToday) {
+      const baseAmount = 10;
+      currentFree += baseAmount;
+      rewardedHon += baseAmount;
+      baseRewardGrantedNow = true;
+
+      await this.honRepository.saveHon({
+        userId,
+        freeBalance: currentFree,
+        paidBalance: currentPaid,
+      });
+
+      await this.honRepository.saveHonEvent({
+        userId,
+        type: 'MINIGAME_REWARD',
+        amount: baseAmount,
+        freeAmount: baseAmount,
+        paidAmount: 0,
+        balance: currentFree + currentPaid,
+        description: `일일 미니게임 미션 달성 (${MINIGAME_LABELS[normalizedType]})`,
+      });
+    } else if (!status.clearedGamesToday.includes(normalizedType)) {
+      // 이미 10 HON을 받은 후 다른 종류의 게임을 새로 클리어했을 때 0 HON 로그를 남겨 서버에서도 4종 달성 추적
+      await this.honRepository.saveHonEvent({
+        userId,
+        type: 'MINIGAME_CLEAR_LOG',
+        amount: 0,
+        freeAmount: 0,
+        paidAmount: 0,
+        balance: currentFree + currentPaid,
+        description: `일일 미니게임 추가 클리어 (${MINIGAME_LABELS[normalizedType]})`,
+      });
+    }
+
+    // 2) 4종 미션 모두 달성 시 추가 보너스 (+30 HON)
+    const isAllFourCleared =
+      mergedCleared.size >= 4 &&
+      (Object.keys(MINIGAME_LABELS) as MinigameType[]).every((gt) =>
+        mergedCleared.has(gt),
+      );
+
+    if (isAllFourCleared && !status.allClearClaimedToday) {
+      const bonusAmount = 30;
+      currentFree += bonusAmount;
+      rewardedHon += bonusAmount;
+      allClearRewardGrantedNow = true;
+
+      await this.honRepository.saveHon({
+        userId,
+        freeBalance: currentFree,
+        paidBalance: currentPaid,
+      });
+
+      await this.honRepository.saveHonEvent({
+        userId,
+        type: 'MINIGAME_ALL_CLEAR_REWARD',
+        amount: bonusAmount,
+        freeAmount: bonusAmount,
+        paidAmount: 0,
+        balance: currentFree + currentPaid,
+        description:
+          '일일 미니게임 4종 올클리어 추가 보너스 (로또 지식 퀴즈 · 로또볼 메모리 매치 · 행운의 번호 추리 · 스피드 로또 캐처)',
+      });
+    }
+
+    return {
+      alreadyClaimed: !baseRewardGrantedNow && !allClearRewardGrantedNow,
+      rewardedHon,
+      baseRewardGrantedNow,
+      allClearRewardGrantedNow,
+      allClearClaimedToday:
+        status.allClearClaimedToday || allClearRewardGrantedNow,
+      clearedGamesToday: Array.from(mergedCleared),
+      freeBalance: currentFree,
+      paidBalance: currentPaid,
+      totalBalance: currentFree + currentPaid,
+      gameType: normalizedType,
+    };
   }
 }
