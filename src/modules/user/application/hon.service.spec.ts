@@ -175,4 +175,144 @@ describe('HonService & PaymentController', () => {
       );
     });
   });
+
+  describe('Minigame daily reward & ticket verification', () => {
+    it('issues and verifies a signed minigame ticket', () => {
+      const issuedAt = Date.now() - 6000;
+      const ticket = honService.issueMinigameTicket('QUIZ', issuedAt);
+      expect(typeof ticket).toBe('string');
+      expect(honService.verifyMinigameTicket(ticket, 'QUIZ', 4000)).toBe(true);
+      expect(honService.verifyMinigameTicket(ticket, 'MEMORY', 4000)).toBe(
+        false,
+      );
+    });
+
+    it('rejects ticket when elapsed duration is less than minDurationMs', async () => {
+      const tooFastTicket = honService.issueMinigameTicket('QUIZ', Date.now());
+      await expect(
+        honService.claimMinigameReward('user-1', 'QUIZ', tooFastTicket),
+      ).rejects.toThrow('비정상적인 게임 완료 요청입니다');
+    });
+
+    it('grants 10 free HON on first daily minigame claim and blocks duplicate claims on same KST day', async () => {
+      const validTicket = honService.issueMinigameTicket(
+        'QUIZ',
+        Date.now() - 10000,
+      );
+      honRepository.getHon.mockResolvedValue({
+        userId: 'user-1',
+        freeBalance: 40,
+        paidBalance: 10,
+      });
+      honRepository.getHonEvents.mockResolvedValueOnce([]);
+
+      const firstClaim = await honService.claimMinigameReward(
+        'user-1',
+        'QUIZ',
+        validTicket,
+      );
+
+      expect(firstClaim).toEqual(
+        expect.objectContaining({
+          alreadyClaimed: false,
+          rewardedHon: 10,
+          baseRewardGrantedNow: true,
+          allClearRewardGrantedNow: false,
+          freeBalance: 50,
+          paidBalance: 10,
+          totalBalance: 60,
+          gameType: 'QUIZ',
+        }),
+      );
+      expect(honRepository.saveHon).toHaveBeenCalledWith({
+        userId: 'user-1',
+        freeBalance: 50,
+        paidBalance: 10,
+      });
+      expect(honRepository.saveHonEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'user-1',
+          type: 'MINIGAME_REWARD',
+          amount: 10,
+          freeAmount: 10,
+          paidAmount: 0,
+          balance: 60,
+        }),
+      );
+
+      // Simulate already claimed today in KST
+      honRepository.getHonEvents.mockResolvedValueOnce([
+        {
+          id: 99,
+          userId: 'user-1',
+          type: 'MINIGAME_REWARD',
+          amount: 10,
+          freeAmount: 10,
+          paidAmount: 0,
+          balance: 60,
+          description: '일일 미니게임 미션 달성 (로또 지식 퀴즈)',
+          createdAt: new Date(),
+        },
+      ]);
+
+      const secondClaim = await honService.claimMinigameReward(
+        'user-1',
+        'MEMORY',
+        honService.issueMinigameTicket('MEMORY', Date.now() - 10000),
+      );
+      expect(secondClaim.alreadyClaimed).toBe(true);
+      expect(secondClaim.rewardedHon).toBe(0);
+    });
+
+    it('grants +30 HON all-clear bonus when all 4 minigames are cleared on the same KST day', async () => {
+      honRepository.getHon.mockResolvedValue({
+        userId: 'user-1',
+        freeBalance: 50,
+        paidBalance: 10,
+      });
+      honRepository.getHonEvents.mockResolvedValueOnce([
+        {
+          id: 101,
+          userId: 'user-1',
+          type: 'MINIGAME_REWARD',
+          amount: 10,
+          freeAmount: 10,
+          paidAmount: 0,
+          balance: 60,
+          description: '일일 미니게임 미션 달성 (로또 지식 퀴즈)',
+          createdAt: new Date(),
+        },
+      ]);
+
+      const allClearResult = await honService.claimMinigameReward(
+        'user-1',
+        'CATCHER',
+        honService.issueMinigameTicket('CATCHER', Date.now() - 10000),
+        ['QUIZ', 'MEMORY', 'DETECTIVE', 'CATCHER'],
+      );
+
+      expect(allClearResult).toEqual(
+        expect.objectContaining({
+          alreadyClaimed: false,
+          rewardedHon: 30,
+          baseRewardGrantedNow: false,
+          allClearRewardGrantedNow: true,
+          allClearClaimedToday: true,
+          freeBalance: 80,
+          paidBalance: 10,
+          totalBalance: 90,
+        }),
+      );
+      expect(honRepository.saveHonEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'user-1',
+          type: 'MINIGAME_ALL_CLEAR_REWARD',
+          amount: 30,
+          freeAmount: 30,
+          paidAmount: 0,
+          balance: 90,
+        }),
+      );
+    });
+  });
 });

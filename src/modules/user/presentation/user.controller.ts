@@ -26,7 +26,7 @@ import {
 import { RedisService } from '../../../helpers/redis/application/redis.service';
 import { RequestParser } from '../../../common/utils/request-parser';
 import { ResponseMessage } from '../../../common/decorators/response-message.decorator';
-import { HonService } from '../application/hon.service';
+import { HonService, MinigameType } from '../application/hon.service';
 import { PaymentService } from '../application/payment.service';
 import { BadWordsService } from '../application/bad-words.service';
 import { prisma } from '../../../libs/prisma';
@@ -446,6 +446,59 @@ export class UserController {
 
     const events = await this.honService.getHonEvents(userId);
     return { success: true, data: events };
+  }
+
+  @ApiOperation({ summary: 'Issue stateless minigame start ticket' })
+  @Get('minigame/ticket')
+  async issueMinigameTicket(@Query('gameType') gameType: string = 'QUIZ') {
+    const issuedAt = Date.now();
+    const ticket = this.honService.issueMinigameTicket(gameType, issuedAt);
+    return {
+      success: true,
+      data: {
+        ticket,
+        gameType: (gameType || 'QUIZ').toUpperCase(),
+        issuedAt,
+      },
+    };
+  }
+
+  @ApiOperation({ summary: 'Get daily minigame reward status (KST)' })
+  @UseGuards(JwtAuthGuard)
+  @Get('minigame/status')
+  async getMinigameStatus() {
+    const userId = this.requestParser.getUserId();
+    if (!userId) {
+      throw new BadRequestException('방문자 ID가 존재하지 않습니다.');
+    }
+
+    const status = await this.honService.getMinigameStatus(userId);
+    return { success: true, data: status };
+  }
+
+  @ApiOperation({
+    summary:
+      'Claim daily 10 HON minigame reward and +30 HON 4-game all-clear bonus (KST)',
+  })
+  @UseGuards(JwtAuthGuard)
+  @Post('minigame/claim')
+  async claimMinigameReward(
+    @Body('gameType') gameType: MinigameType,
+    @Body('ticket') ticket?: string,
+    @Body('clearedGames') clearedGames?: MinigameType[],
+  ) {
+    const userId = this.requestParser.getUserId();
+    if (!userId) {
+      throw new BadRequestException('방문자 ID가 존재하지 않습니다.');
+    }
+
+    const result = await this.honService.claimMinigameReward(
+      userId,
+      gameType,
+      ticket,
+      clearedGames,
+    );
+    return { success: true, data: result };
   }
 
   @ApiOperation({ summary: 'Report a nickname' })
