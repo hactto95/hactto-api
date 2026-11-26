@@ -95,7 +95,12 @@ export class AuthService {
     }
   }
 
-  async signup(email: string, nickname: string, passwordRaw: string) {
+  async signup(
+    email: string,
+    nickname: string,
+    passwordRaw: string,
+    ip?: string,
+  ) {
     this.validatePassword(passwordRaw);
     const existingEmail = await prisma.user.findUnique({ where: { email } });
     if (existingEmail && !existingEmail.deletedAt)
@@ -117,6 +122,7 @@ export class AuthService {
           email,
           password,
           nickname,
+          ...(ip ? { ip } : {}),
         },
       });
 
@@ -226,6 +232,15 @@ export class AuthService {
       await prisma.loginFailLog.delete({ where: { ip_email: { ip, email } } });
     }
 
+    if (ip && user.ip !== ip) {
+      await prisma.user
+        .update({
+          where: { id: user.id },
+          data: { ip },
+        })
+        .catch(() => {});
+    }
+
     const tokens = await this.generateTokens(user.id);
     return {
       ...tokens,
@@ -295,7 +310,7 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  async refresh(refreshToken: string) {
+  async refresh(refreshToken: string, ip?: string) {
     try {
       const payload = this.jwtService.verify(refreshToken);
       const userId = payload.sub;
@@ -305,6 +320,15 @@ export class AuthService {
 
       if (storedToken !== refreshToken)
         throw new UnauthorizedException('유효하지 않은 리프레시 토큰입니다.');
+
+      if (ip) {
+        await prisma.user
+          .update({
+            where: { id: userId },
+            data: { ip },
+          })
+          .catch(() => {});
+      }
 
       return this.generateTokens(userId);
     } catch {

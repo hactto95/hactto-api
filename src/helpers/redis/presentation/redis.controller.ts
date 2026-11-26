@@ -1,6 +1,5 @@
 import { RedisService } from '../application/redis.service';
 import { Controller, Delete, Get, Logger, Query } from '@nestjs/common';
-import * as crypto from 'crypto';
 import { ResponseMessage } from '../../../common/decorators/response-message.decorator';
 import { RedisManager } from '../../../common/decorators/redis-manager.decorator';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -51,17 +50,17 @@ export class RedisController {
       return { allowed: false, pending: false, ip: 'unknown', userId: '' };
     }
 
-    const userId =
-      this.requestParser.getUserId() ||
-      crypto.createHash('sha256').update(ip).digest('hex').substring(0, 16);
+    const userId = this.requestParser.getUserId() || '';
 
-    const hon = await this.honService.getHon(userId);
-    const subscription = await this.honService.getSubscription(userId);
+    const hon = userId ? await this.honService.getHon(userId) : null;
+    const subscription = userId
+      ? await this.honService.getSubscription(userId)
+      : null;
 
     if (queryMk) {
       const isValidMasterKey = await this.redisService.validateMasterKey(
         queryMk,
-        { ip, userId },
+        { ip, userId: userId || undefined },
       );
       return {
         allowed: isValidMasterKey,

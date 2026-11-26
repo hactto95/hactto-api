@@ -32,29 +32,42 @@ export class AuthController {
     return this.authService.verifySignupToken(token);
   }
 
+  private extractClientIp(req: any): string {
+    const ip =
+      req?.headers?.['x-forwarded-for'] ||
+      req?.ip ||
+      req?.connection?.remoteAddress ||
+      req?.socket?.remoteAddress ||
+      '0.0.0.0';
+    const raw = Array.isArray(ip) ? ip[0] : String(ip).split(',')[0].trim();
+    return (
+      raw
+        .replace(/^IP:\s*/i, '')
+        .replace(/^::ffff:/, '')
+        .trim() || '0.0.0.0'
+    );
+  }
+
   @Post('signup')
-  async signup(@Body() body: any) {
+  async signup(@Req() req: any, @Body() body: any) {
     const { email, nickname, password } = body;
-    return this.authService.signup(email, nickname, password);
+    const clientIp = this.extractClientIp(req);
+    return this.authService.signup(email, nickname, password, clientIp);
   }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Req() req: any, @Body() body: any) {
     const { email, password } = body;
-    const ip =
-      req.ip ||
-      req.headers['x-forwarded-for'] ||
-      req.connection?.remoteAddress ||
-      '0.0.0.0';
-    const clientIp = Array.isArray(ip) ? ip[0] : ip.split(',')[0].trim();
+    const clientIp = this.extractClientIp(req);
     return this.authService.login(email, password, clientIp);
   }
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  async refresh(@Body('refreshToken') refreshToken: string) {
-    return this.authService.refresh(refreshToken);
+  async refresh(@Req() req: any, @Body('refreshToken') refreshToken: string) {
+    const clientIp = this.extractClientIp(req);
+    return this.authService.refresh(refreshToken, clientIp);
   }
 
   @Post('withdraw/send-link')
