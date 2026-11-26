@@ -25,7 +25,6 @@ import {
 } from '../domain/ports/user.port';
 import { RedisService } from '../../../helpers/redis/application/redis.service';
 import { RequestParser } from '../../../common/utils/request-parser';
-import { ResponseMessage } from '../../../common/decorators/response-message.decorator';
 import { HonService, MinigameType } from '../application/hon.service';
 import { PaymentService } from '../application/payment.service';
 import { BadWordsService } from '../application/bad-words.service';
@@ -45,29 +44,6 @@ export class UserController {
     private readonly requestParser: RequestParser,
     private readonly badWordsService: BadWordsService,
   ) {}
-
-  @ApiOperation({ summary: 'Register user' })
-  @ResponseMessage('success.register.user')
-  @Post('register')
-  async register(): Promise<void> {
-    const ip = this.requestParser.getIpOrThrow();
-    const userId = this.requestParser.getUserId();
-
-    if (!userId) {
-      throw new BadRequestException('User ID가 유효하지 않습니다.');
-    }
-
-    const redisKey = `user-ip:${userId}`;
-    await this.redisService.set(redisKey, ip, 604800); // 7 days expiration
-    await this.userRepository.insert(userId, ip);
-    await this.honService.chargeHon(
-      `${userId}-register`,
-      userId,
-      50,
-      true,
-      '첫 방문',
-    );
-  }
 
   @ApiOperation({ summary: 'Get current user profile' })
   @UseGuards(JwtAuthGuard)
@@ -153,20 +129,11 @@ export class UserController {
     }
 
     // Ensure user exists
-    let user = await prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { id: userId },
     });
     if (!user) {
-      let ip = '0.0.0.0';
-      try {
-        ip = this.requestParser.getIpOrThrow();
-      } catch {}
-      user = await prisma.user.create({
-        data: { id: userId, ip },
-      });
-      await prisma.hon.create({
-        data: { userId, freeBalance: 50, paidBalance: 0 },
-      });
+      throw new NotFoundException('방문자를 찾을 수 없습니다.');
     }
 
     const inquiry = await prisma.inquiry.create({

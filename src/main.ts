@@ -59,7 +59,6 @@ async function bootstrap() {
     origin: corsOrigin,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
-    exposedHeaders: ['x-first-visit'],
   });
 
   // Swagger

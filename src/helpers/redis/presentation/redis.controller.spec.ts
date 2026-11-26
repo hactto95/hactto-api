@@ -49,19 +49,16 @@ describe('RedisController', () => {
     });
   });
 
-  it('falls back to IP hash userId when requestParser.getUserId returns undefined', async () => {
+  it('does not query hon or subscription when requestParser.getUserId returns undefined', async () => {
     (requestParser.getUserId as jest.Mock).mockReturnValue(undefined);
-    const expectedIpHash = crypto
-      .createHash('sha256')
-      .update('127.0.0.1')
-      .digest('hex')
-      .substring(0, 16);
 
     const result = await controller.checkIp();
 
-    expect(honService.getHon).toHaveBeenCalledWith(expectedIpHash);
-    expect(honService.getSubscription).toHaveBeenCalledWith(expectedIpHash);
-    expect(result.userId).toBe(expectedIpHash);
+    expect(honService.getHon).not.toHaveBeenCalled();
+    expect(honService.getSubscription).not.toHaveBeenCalled();
+    expect(result.userId).toBe('');
+    expect(result.hon).toBeNull();
+    expect(result.subscription).toBeNull();
   });
 
   describe('RequestParser.getUserId token validation', () => {
