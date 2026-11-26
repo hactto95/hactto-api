@@ -121,18 +121,10 @@ export class IpAccessGuard implements CanActivate {
         if (response && typeof response.setHeader === 'function') {
           response.setHeader('x-first-visit', 'true');
         }
-      } else if (savedIp === '0.0.0.0') {
-        // 결제 모듈 등에서 0.0.0.0으로 임시 저장된 경우, 현재 실제 IP로 업데이트 후 통과
+      } else if (savedIp === '0.0.0.0' || savedIp !== ip) {
+        // 0.0.0.0으로 임시 저장되었거나 다른 기기/네트워크(IP)에서 접속한 경우 최근 접속 IP로 업데이트 후 통과
         await this.repository.updateIp(userId, ip);
         await this.redisService.set(redisKey, ip, 86400 * 30);
-      } else if (savedIp !== ip) {
-        // 그 다음부터는 userId 검증해서 다른 IP 에서는 해당 userId 사용못하게 처리
-        this.logger.warn(
-          `User ID hijacking detected! ID: ${userId}. Saved IP: ${savedIp}, Current IP: ${ip}`,
-        );
-        throw new ForbiddenException(
-          '허용되지 않은 접근 주소입니다. (IP 불일치)',
-        );
       }
     }
 
